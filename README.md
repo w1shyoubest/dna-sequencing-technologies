@@ -1,6 +1,8 @@
 # Tissue to Farm
 
-Not farm to table: tissue to **Farm**, the UC Davis compute cluster. My personal study notes, drawn as hand-drawn interactive figures that follow a sample from DNA to the FASTQ files that land on the cluster, one page per step. This is a learning project, not teaching material and not manufacturer documentation; corrections are welcome. Two short-read chemistries are covered: **Illumina** (bridge amplification, sequencing by synthesis) and **Element AVITI** (rolling circle amplification, sequencing by avidity).
+Hand-drawn, interactive figures that follow a sample from DNA to the FASTQ files that land on the cluster, one page per step. Two short-read chemistries are covered: **Illumina** (bridge amplification, sequencing by synthesis) and **Element AVITI** (rolling circle amplification, sequencing by avidity).
+
+This is a personal study project: my own notes, drawn as figures. It is not teaching material and not manufacturer documentation; corrections are welcome.
 
 Live site: https://w1shyoubest.github.io/second-generation-sequencing/
 
@@ -26,7 +28,7 @@ Open any page in a browser; keep the files in one folder so the buttons that lin
 - **Reading and stepping can be separate steps.** In Illumina the labelled nucleotide that is read is also the one incorporated. In AVITI an avidite is read and then washed off, and a plain nucleotide does the stepping, which lets each step be optimised on its own and is the main reason for its lower error rate.
 - **Indexes and paired ends.** Barcodes in the adapters tell pooled libraries apart; reading the fragment from both ends gives paired reads.
 
-## What is verified, what is inferred
+## Verification & Inference
 
 These are study sketches, not manufacturer documentation. Strand lengths are shortened, only a few cycles and amplification rounds are played, and both instruments are drawn smaller and simpler than life.
 
