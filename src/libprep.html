@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Library prep</title></head><body>
+<script src="core.js"></script>
+<script>
+/* Library preparation, shown only as what happens to the DNA (no instruments, no reagent tubes). Two molecules are
+   followed side by side, one for each way of putting the index (barcode) on:
+     ROUTE 1  the index is already in the adapter: full-length forked adapters (P5 + i5 + read 1 site on one arm,
+              read 2 site + i7 + P7 on the other) are ligated on. No PCR is needed (PCR-free).
+     ROUTE 2  short forked adapters carry only the read primer sites; an index PCR then adds i5 + P5 on one side and
+              i7 + P7 on the other, and enriches complete molecules.
+   Beads are schematic: an insert of a few hundred bp is drawn as 20 beads; adapter colours match the flow cell page.
+
+   STEPS  0 extracted DNA . 1 FRAGMENT (ragged ends) . 2 END REPAIR + A-TAIL (blunt, 5' phosphate, one A on each 3'
+   end) . 3 LIGATE ADAPTERS (T overhang pairs with the A; adapters also join each other: dimers) . 4 CLEAN UP (dimers
+   and free adapters removed) . 5 INDEX PCR (route 2 only) . 6 QC (size, concentration) + POOL with other indexed
+   libraries and PhiX . 7 DENATURE to single strands -> flow cell.
+   After route 1 the ends stay forked (both strands read 5'-P5 ... P7'-3'); after PCR the two strands are fully
+   complementary. Both load onto the flow cell the same way. */
+const BX = 136, BY = 150, SZ = 8, KQ = Math.sqrt(1.5), RB = 1.05, DY = 2.2, DUP = 1.7, ZM = 17, XR = [24, 48, 72, 96], YC = 75, CXQ = 122;
+const BCOL = ['#43c25c', '#4aa3ff', '#f4c430', '#e2483d'];
+const SEG = { P5:'#17a398', I5:'#e0409a', S1:'#2c3e7a', S2:'#6b7a3a', I7:'#9c6b30', P7:'#8a5cd6' }, lite = c => mix(c, '#ffffff', .55);
+const PHOS = '#ff9f43', TPLC = '#8a8f94', TPL2 = '#c3c7ca', GLASS = matOf('#d9eef1'), PAPER = matOf('#fbfaf3');
+const lerp = (a, b, t) => a.map((v, i) => v + (b[i] - v)*t), c01 = v => Math.max(0, Math.min(1, v)), add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const mu = w => `style="stroke-width:${w.toFixed(2)}"`;
+const bead = (p, r, col, w = .5, sc = INK) => { const q = P(...p); return `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${f(r*KQ)}" fill="${col}" stroke="${sc}" stroke-width="${w}"/>`; };
+const note = (p, str, col = INK, size = 3) => { const q = P(...p); return `<text x="${f(q[0])}" y="${f(q[1])}" font-size="${size}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="800" fill="${col}" stroke="#f2efe7" style="stroke-width:.9;paint-order:stroke">${str}</text>`; };
+const flat = (x, y, str, size, col = '#5f6b70') => `<text transform="${txM(P(x, y, SZ + .05), Dv(0,-1,0), Dv(1,0,0))}" font-size="${size}" fill="${col}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="800" letter-spacing=".04em">${str}</text>`;
+
+/* ---------- molecules: a duplex is two rows of beads; a bead is [k, colour, dx, dz, radius] at position k along y ---------- */
+const baseAt = (r, k) => { const a = Math.abs(k) + r*11; return (a*7 + ((a*a) >> 1) + 3*(a % 5)) % 4; };
+const insT = (r, k0, k1, grey) => { const o = []; for (let k = k0; k <= k1; k++) o.push([k, grey ? '#d6dadd' : BCOL[baseAt(r, k)]]); return o; };
+const insB = (r, k0, k1, grey) => { const o = []; for (let k = k0; k <= k1; k++) o.push([k, grey ? '#eceeef' : BCOL[3 - baseAt(r, k)]]); return o; };
+const run = (k0, k1, col) => { const o = []; for (let k = k0; k <= k1; k++) o.push([k, col]); return o; };
+const arm = (k0, dir, side, cols) => cols.map((c, i) => [k0 + dir*i, c, side*Math.min(i + 1, 3)*1.15, Math.min(i + 1, 3)*(side < 0 ? .9 : .25)]);
+// forked adapter on one end of an A-tailed fragment (end +1 = right, -1 = left). Strand X = 5' arm . stem . T ; strand Y = stem' . 3' arm.
+// full = route 1: the arms already carry index and P5 / P7; short = route 2: the arms are only the rest of the read primer sites.
+const ARMX = full => full ? [SEG.I5, SEG.I5, SEG.P5, SEG.P5, SEG.P5, SEG.P5] : [SEG.S1, SEG.S1];
+const ARMY = full => (full ? [SEG.I7, SEG.I7, SEG.P7, SEG.P7, SEG.P7, SEG.P7] : [SEG.S2, SEG.S2]).map(lite);
+const adapter = (end, full) => end > 0
+  ? { top: [...run(21, 23, lite(SEG.S2)), ...arm(24, 1, -1, ARMY(full))], bot: [[20, BCOL[3]], ...run(21, 23, SEG.S1), ...arm(24, 1, 1, ARMX(full))] }
+  : { top: [[-1, BCOL[3]], ...run(-4, -2, SEG.S1), ...arm(-5, -1, -1, ARMX(full))], bot: [...run(-4, -2, lite(SEG.S2)), ...arm(-5, -1, 1, ARMY(full))] };
+const fullLib = (r, ix, grey) => ({
+  top: [...run(-10, -7, SEG.P5), ...run(-6, -5, ix[0]), ...run(-4, -2, SEG.S1), [-1, BCOL[3]], ...insT(r, 0, 19, grey), [20, BCOL[0]], ...run(21, 23, lite(SEG.S2)), ...run(24, 25, lite(ix[1])), ...run(26, 29, lite(SEG.P7))],
+  bot: [...run(-10, -7, lite(SEG.P5)), ...run(-6, -5, lite(ix[0])), ...run(-4, -2, lite(SEG.S1)), [-1, BCOL[0]], ...insB(r, 0, 19, grey), [20, BCOL[3]], ...run(21, 23, SEG.S2), ...run(24, 25, ix[1]), ...run(26, 29, SEG.P7)] });
+const IX = [[SEG.I5, SEG.I7], ['#00a6c8', '#7cb518'], ['#9aa0a6', '#9aa0a6']];
+// row 0 = route 1 (index in the adapter), row 1 = route 2 (index PCR); rows 2 and 3 join at pooling
+function stageMols(n){
+  const M = [], at = (r, o) => ({ x: XR[r], yc: YC, z: ZM, ...o }), sep = n === 7 ? 6 : 0;
+  for (let r = 0; r < 2; r++){ const full = r === 0;
+    if (n === 0) M.push(at(r, { top: insT(r, -17, 36), bot: insB(r, -17, 36) }));
+    if (n === 1) M.push(at(r, { top: insT(r, -1, 19), bot: insB(r, 0, 20) }));
+    const tailed = { top: [[-.55, PHOS, 0, 0, .5], ...insT(r, 0, 19), [20, BCOL[0]]], bot: [[-1, BCOL[0]], ...insB(r, 0, 19), [19.55, PHOS, 0, 0, .5]] };
+    const forked = n >= 3 && (full || n <= 4);
+    if (n === 2 || forked) M.push(at(r, { ...tailed, sep }));
+    if (forked) for (const e of [1, -1]) M.push(at(r, { ...adapter(e, full), from: n === 3 ? [0, e*16, 12] : null, sep }));
+    if (!full && n === 5){ M.push(at(r, fullLib(r, IX[0]))); M.push(at(r, { ...fullLib(r, IX[0]), z: ZM + 11, from: [0, 0, -11] })); }
+    if (!full && n >= 6) M.push(at(r, { ...fullLib(r, IX[0]), sep }));
+    if (n === 3){ // adapters that found each other, and adapters left over
+      const L = adapter(-1, full), R = adapter(1, full), sh = (bs, d) => bs.map(b => [b[0] + d, ...b.slice(1)]);
+      M.push({ x: XR[r] + 11, yc: 46, z: ZM + 15, top: [...sh(L.top, 9), ...sh(R.top, -11)], bot: [...sh(L.bot, 9), ...sh(R.bot, -11)], from: [0, 0, 8], junk: 1, name: r === 0 ? 'ADAPTER DIMER' : '' });
+      M.push({ x: XR[r] + 11, yc: 112, z: ZM + 15, top: sh(R.top, -22), bot: sh(R.bot, -22), from: [0, 0, 8], junk: 1, name: r === 0 ? 'FREE ADAPTER' : '' }); }
+  }
+  if (n >= 6){ M.push(at(2, { ...fullLib(2, IX[1]), sep, from: [0, 0, 14] })); M.push(at(3, { ...fullLib(3, IX[2], true), sep, from: [0, 0, 14] })); }
+  return M;
+}
+const bpos = (m, b, top, off) => [m.x + (top ? -1 : 1)*(DUP + (m.sep || 0)) + (b[2] || 0) + off[0], m.yc + (b[0] - 9.5)*DY + off[1], m.z + (top ? .4 : -.2)*(m.sep || 0) + (b[3] || 0) + off[2]];
+function drawMol(m, fIn){
+  const off = m.from ? m.from.map(v => v*(1 - ease(fIn))) : [0, 0, 0];
+  const row = (bs, top) => { const s = bs.slice().sort((a, b) => a[0] - b[0]), pts = s.map(b => bpos(m, b, top, off)), rib = top ? TPLC : TPL2, d = pd(pts, false);
+    return `<path d="${d}" fill="none" stroke="${INK}" ${mu(1.75)} stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${rib}" ${mu(1.25)} stroke-linecap="round" stroke-linejoin="round"/>`
+      + s.map((b, i) => [depthOf(pts[i]), bead(pts[i], b[4] || RB, b[1], b[4] ? .4 : 1.1, b[4] ? INK : rib)]).sort((a, b) => a[0] - b[0]).map(x => x[1]).join(''); };
+  let rg = '';
+  if (!(m.sep > .5)) for (const t of m.top){ if (t[2] || t[4]) continue; const b = m.bot.find(q => q[0] === t[0] && !q[2] && !q[4]); if (b) rg += pd([bpos(m, t, true, off), bpos(m, b, false, off)], false); }
+  return (rg ? `<path d="${rg}" fill="none" stroke="${INK}" ${mu(.3)} opacity=".6"/>` : '') + (facing([1,0,0]) ? row(m.top, true) + row(m.bot, false) : row(m.bot, false) + row(m.top, true));
+}
+
+const STEPS = [null,
+  { name:'Fragment', note:'The long DNA is cut into pieces of a few hundred bp; the ends are ragged', r:['~350 bp, ragged', '~350 bp, ragged'] },
+  { name:'End repair + A-tail', note:'Ends are blunted, 5 ends get a phosphate, each 3 end gets one extra A', r:['blunt, 5 P, 3 A', 'blunt, 5 P, 3 A'] },
+  { name:'Ligate adapters', note:'Route 1: full adapters, index already inside. Route 2: short adapters, primer sites only', r:['full indexed adapters', 'short adapters'] },
+  { name:'Clean up', note:'The library is kept; adapter dimers and free adapters are washed away', r:['dimers removed', 'dimers removed'] },
+  { name:'Index PCR', note:'Route 2 only: primers add i5 + P5 and i7 + P7 and copy the molecule. Route 1 needs no PCR', r:['no PCR needed', 'index + P5 / P7 added'] },
+  { name:'QC + pool', note:'Size and concentration are checked; libraries with different indexes are pooled, PhiX is spiked in', r:['in the pool', 'in the pool'] },
+  { name:'Denature', note:'NaOH separates the strands; the pool is diluted to loading concentration for the flow cell', r:['single strands', 'single strands'] } ];
+
+/* ---------- QC result: a size trace and a concentration ---------- */
+function qcCard(st){
+  const x0 = CXQ, x1 = CXQ + 1.2, y0 = 52, w = 46, z0 = 2, z1 = 27, show = st.step > 6 || (st.step === 6 && (!st.anim || st.u > .3));
+  let s = box(x0, y0, z0, x1, y0 + w, z1, PAPER, toneI, 1.1);
+  if (facing([1,0,0])){ const X = x1 + .06, pl = uv => on(PX(X), uv);
+    s += shape(pl(rectUV(y0 + .3, z1 - 4.6, y0 + w - .3, z1 - .3)), show ? 'var(--accent,#93d3b0)' : '#3d3935', .6) + tx(X, y0 + w/2, z1 - 3.3, 'LIBRARY QC', 2, show ? INK : '#f6f2e6', 800);
+    s += line([[X, y0 + w - 4, 10.4], [X, y0 + 4, 10.4]], .9) + line([[X, y0 + w - 4, 10.4], [X, y0 + w - 4, 21]], .9);
+    if (show){ const pts = []; for (let i = 0; i <= 40; i++){ const t = i/40, y = y0 + w - 4 - t*(w - 8), g = Math.exp(-(((t - .55)/.09)**2)); pts.push([X, y, 10.8 + 9.5*g + .15*Math.sin(i*1.7)]); }
+      s += `<path d="${pd(pts, false)}" fill="none" stroke="${SEG.P7}" stroke-width="2.2" stroke-linejoin="round"/>`;
+      s += tx(X, y0 + w - 4 - .55*(w - 8), 8, 'PEAK 470 bp', 1.6, INK, 800) + tx(X, y0 + w - 10, 8, 'NO DIMER', 1.3, '#857d6e', 700) + tx(X, y0 + w/2, 5.4, 'CONC 4.1 nM: DILUTE + POOL', 1.5, INK, 700) + tx(X, y0 + w/2, 3.2, 'SIZE (bp)', 1.2, '#857d6e', 700); }
+    else s += tx(X, y0 + w/2, 14, 'NOT MEASURED YET', 1.6, '#857d6e', 700); }
+  return s;
+}
+
+/* ---------- the DNA ---------- */
+let LP_LABELS = [];
+function patch(st, m){
+  const u = st.anim ? st.u : 1, fI = st.anim ? c01((u - .25)/.5) : 1, L = LP_LABELS, n = st.step, lab = (at, text, on = false) => L.push({ at, text, on });
+  let s = box(8, 14, 2, 112, 136, SZ, GLASS, toneI, 1.4);
+  s += flat(XR[0] + 6.5, YC, 'ROUTE 1: INDEX IN THE ADAPTER, NO PCR', 3.2) + flat(XR[1] + 6.5, YC, 'ROUTE 2: INDEX ADDED BY PCR', 3.2);
+  if (n >= 6) s += `<g opacity="${f(fI)}">` + flat(XR[2] + 6.5, YC, 'LIBRARY 2: OTHER INDEXES', 3.2) + flat(XR[3] + 6, YC, 'PHIX CONTROL', 3.2) + '</g>';
+  const items = [], put = (at, svg) => items.push({ at, svg });
+  const cur = stageMols(n), prev = st.anim && n > 0 ? stageMols(n - 1) : [];
+  if (fI < 1) for (const q of prev){ const o = q.junk ? [10*fI, 0, 16*fI] : [0, 0, 0]; put([q.x, q.yc, q.z], `<g opacity="${f(1 - fI)}">${drawMol({ ...q, from: null, x: q.x + o[0], z: q.z + o[2] }, 1)}</g>`);
+    if (q.junk && q.name && n === 4) lab([q.x + o[0], q.yc, q.z + o[2]], 'WASHED AWAY', true); }
+  for (const q of cur){ put([q.x, q.yc, q.z + .1], `<g opacity="${f(fI)}">${drawMol(q, fI)}</g>`); if (q.junk && q.name && fI > .5) lab([q.x, q.yc, q.z], q.name, st.anim); }
+  const sp7 = n === 7 ? 6*fI : 0, at = (k, top = true, r = 0, dz = 0) => [XR[r] + (top ? -1 : 1)*(DUP + sp7), YC + (k - 9.5)*DY, ZM + dz + (top ? .4 : -.2)*sp7], on = !!st.anim;
+  if (st.anim && n === 1 && u > .3 && u < .7) for (let r = 0; r < 2; r++) for (const k of [-2, 21]) put(at(k, true, r, 3), note([XR[r], YC + (k - 9.5)*DY, ZM + 3.5], 'CUT', '#e2483d', 3));
+  if (st.anim && n === 5 && u > .25 && u < .75){ const k = 28 - 38*c01((u - .25)/.5), c = [XR[1], YC + (k - 9.5)*DY, ZM + .3], R = 5, pts = [];   // the polymerase of the PCR, on route 2
+    for (let i = 0; i <= 20; i++){ const t = (48 + 264*i/20)*Math.PI/180; pts.push(P(...[0, 1, 2].map(j => c[j] + CAM_R[j]*R*.6*Math.sin(t) + CAM_U[j]*R*.6*Math.cos(t)))); }
+    const d = 'M' + pts.map(q => f(q[0]) + ' ' + f(q[1])).join('L');
+    put(add(c, [-3, -3, -2]), `<g opacity=".8"><path d="${d}" fill="none" stroke="${INK}" style="stroke-width:${(R*.62*KQ).toFixed(2)}" stroke-linecap="round"/><path d="${d}" fill="none" stroke="${m.m}" style="stroke-width:${(R*.54*KQ).toFixed(2)}" stroke-linecap="round"/></g>`);
+    lab(c, 'POLYMERASE COPYING', true); lab(at(-8.5, true, 1), 'PRIMER: i5 + P5', true); lab(at(26, true, 1), 'PRIMER: i7 + P7', true); }
+  // names
+  if (n === 0) lab(at(6), 'EXTRACTED DNA', false);
+  if (n === 1){ lab(at(9), 'FRAGMENT', on); lab(at(-1), 'RAGGED END', on); }
+  if (n === 2){ lab(at(-.55), '5 PHOSPHATE', on); lab(at(20), 'A OVERHANG', on); lab(at(9), 'INSERT', false); }
+  if (n >= 3){ const o3 = on && n === 3;   // route 1 keeps its forked, fully indexed adapters to the end
+    lab(add(at(-9), [-3.4, 0, 2.7]), 'P5', o3); lab(add(at(-5.5), [-2, 0, 1.6]), 'i5 INDEX', o3); lab(at(-3), 'READ 1 PRIMER SITE', false); lab(at(9), 'INSERT', false);
+    lab(at(22), 'READ 2 PRIMER SITE', false); lab(add(at(24.5), [-2, 0, 1.6]), 'i7 INDEX', o3); lab(add(at(28), [-3.4, 0, 2.7]), 'P7', o3);
+    if (n < 7){ lab(at(20, false), 'T PAIRS WITH A', o3); lab(add(at(27, false), [3.4, 0, .7]), 'FORKED END', false); } }
+  if (n === 3 || n === 4) lab(add(at(25, true, 1), [-2.3, 0, 1.8]), 'SHORT ADAPTER', on && n === 3);
+  if (n === 5 && !st.anim){ lab(at(-5.5, true, 1), 'i5 ADDED', false); lab(at(24.5, true, 1), 'i7 ADDED', false); lab([XR[1] - DUP, YC, ZM + 11], 'PCR COPY', false); lab(at(14, false, 0), 'UNCHANGED', false); }
+  if (n === 7){ lab(at(14, true, 1), 'TOP STRAND', on); lab(at(14, false, 1), 'BOTTOM STRAND', on); }
+  return s + byDepth(items);
+}
+
+/* ---------- scene ---------- */
+function scene(st, m){
+  const btop = boardTop(0, 0, BX, BY, 2, 5), cs = (a, b) => { const o = []; for (const x of [a[0], b[0]]) for (const y of [a[1], b[1]]) for (const z of [a[2], b[2]]) o.push([x, y, z]); return o; };
+  LP_LABELS = [];
+  let s = board(0, 0, BX, BY, 2, 5);
+  s += castShadow(cs([8, 14, 2], [112, 136, SZ]), 2, btop) + castShadow(cs([CXQ, 52, 2], [CXQ + 1.2, 98, 27]), 2, btop);
+  s += byDepth([{ box: [[8, 14, 2], [118, 136, 50]], svg: patch(st, m) }, { box: [[CXQ, 52, 2], [CXQ + 1.3, 98, 27]], svg: qcCard(st) }]);
+  if (facing([1,0,0])) LP_LABELS.push({ at: [CXQ + 1.3, 54, 25], text: 'QC RESULT', on: st.step === 6 && st.anim });
+  return s + xrCallouts(LP_LABELS, [0, 92, 40, 600, 0, 36]);
+}
+
+/* ---------- behaviour ---------- */
+let ui;
+function doStep(st, n){
+  if (st.anim) return ui.flash('One moment');
+  if (st.step >= n) return ui.flash(STEPS[n].name + ' is already done');
+  if (st.step < n - 1) return ui.flash('First: ' + STEPS[st.step + 1].name);
+  st.step = n; st.anim = true; st.u = 0; ui.flash(STEPS[n].note, 3800);
+  const secs = n === 5 ? 4.5 : 3.2;
+  ui.animate(dt => { st.u = Math.min(1, st.u + dt/secs); if (st.u >= 1){ st.anim = false; return false; } return true; });
+}
+ui = mountFigure({
+  fig:'11', turn:'full', title:'Library prep',
+  size:[BX, BY, 44], palette:'mint',
+  state:{ step:0, anim:false, u:0 },
+  scene,
+  buttons:[
+    ...[1, 2, 3, 4, 5, 6, 7].map(n => ({ label: STEPS[n].name, onClick: st => doStep(st, n) })),
+    { label:'Reset', onClick: st => { if (st.anim) return ui.flash('One moment'); st.step = 0; st.u = 0; } },
+    { label:'To the flow cell', onClick: st => { if (st.step < 7) return ui.flash('Finish the library first: ' + STEPS[st.step + 1].name); location.href = 'flowcell-closeup.html'; } },
+  ],
+  stats: st => [ { label:'Step', value: `${st.step}/7` } ],
+  params:(st, q) => { if (q.has('step')) st.step = +q.get('step'); if (q.has('u')){ st.u = +q.get('u'); st.anim = true; } },
+});
+xrMount(() => ui, () => '', { labelsOnly:true });
+</script></body></html>

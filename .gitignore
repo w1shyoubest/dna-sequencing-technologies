@@ -1,0 +1,6 @@
+shots/
+_*.html
+*.v[0-9].html
+*.sh
+grid.py
+.DS_Store

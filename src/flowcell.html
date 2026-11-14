@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flow cell close-up</title></head><body>
+<script src="core.js"></script>
+<script>
+/* Flow cell close-up: an eight-lane flow cell (6x life size); a patch of one lane's glass magnified to molecular scale;
+   and the data the run leaves behind, as file cards along the front of the bench.
+
+   SCALE OF THE MOLECULAR PATCH (one scale for everything on it)
+     one bead = one nucleotide, 0.34 nm apart along a strand (B-DNA rise); the two strands of a duplex ~2 nm apart
+     dNTP ~1 nm long: base + sugar + three phosphates
+     DNA polymerase ~6 nm across (a ~70-90 kDa enzyme): it covers ~17 base pairs, far bigger than a dNTP
+     lawn oligos ~5 nm apart. ONLY the strand length is not to scale: 30 nucleotides are drawn (4 adapter + 22 insert
+     + 4 adapter, ~10 nm); real library strands are 300-600 nucleotides.
+
+   HOW IT REALLY WORKS
+   0. The lane floor carries a lawn of two short oligos, P5 and P7, fixed by their 5' ends (3' end up, free).
+      A library fragment is double stranded: 5'-P5 . insert . P7'-3' paired with its complement.
+   1. DENATURE: the two strands separate. Nothing is discarded: both single strands are flowed over the lane.
+   2. HYBRIDIZE: strands diffuse and collide with lawn oligos at random. A 3' end that is not complementary falls off
+      again; the top strand's 3' end (P7') stays on a P7 oligo, the bottom strand's 3' end (P5') on a P5 oligo.
+      Each bound strand seeds its own cluster (the bottom strand's is left as a seed here).
+   3. EXTEND: polymerase sits on the oligo's 3' end: its fingers close on the dNTP that matches the next template
+      base (A-T, C-G), the palm joins it to the 3' end, pyrophosphate (two phosphates) leaves, the enzyme steps on.
+      The copy is fixed to the glass (this is the FORWARD strand); the original template is washed away.
+   4. BRIDGE AMPLIFICATION: the strand's free 3' end bends to a neighbouring oligo, polymerase copies the bridge,
+      denaturing leaves a forward strand (on P7) and a REVERSE strand (on P5), complementary to each other.
+      1 -> 2 -> 4 -> 8 are played; about 35 rounds really run, giving roughly 1000 copies = a cluster. BOTH library
+      strands seed a cluster this way (cluster A from the top strand, cluster B from the bottom strand). A cluster must be full before sequencing: one molecule is too dim to see.
+   5. LINEARIZE: reverse strands are cut off; a primer binds the free end of the forward strands.
+   6. READ 1, sequencing by synthesis: per cycle polymerase adds ONE dNTP carrying a dye and a 3' block; the camera
+      photographs the lane; dye and block are cleaved. 150 cycles (7 are played, then the last).
+   7. INDEX READS: read 1 copy stripped; index 1 primer reads i7. Index 2 (forward-strand chemistry, MiSeq / NovaSeq
+      6000 style): the strand's 3' end pairs with a surface P5 oligo, which is extended to read i5. (Other
+      instruments read i5 after the turnaround with a primer.) Free 3' ends are blocked after each linearization
+      and unblocked for the turnaround. In every SBS cycle unused dNTPs are washed out before imaging.
+   8. PAIRED-END TURN: the strands bridge again and polymerase rebuilds the reverse strands; the forward strands
+      are cut off; READ 2 is sequenced on the reverse strands.
+   DATA  camera images -> base calls (one .bcl per cycle, with a quality score) -> demultiplexed by index ->
+         FASTQ per library: R1 (read 1), R2 (read 2), and I1 (index read) when index files are written.
+
+   PARTS  flow cell: carrier . glass . 4 lanes with imaging tiles . 4 inlet + 4 outlet ports . grip . barcode
+          patch: glass . P5 / P7 oligos . library duplex . template . forward / reverse strands . polymerase
+          (fingers, palm, thumb) . dNTPs (base, sugar, 3 phosphates) . pyrophosphate . primer . labelled blocked dNTPs
+          data: camera image . base-call file . three FASTQ cards */
+const BX = 174, BY = 156, SZ = 8, G = 1.6, CX = 164;       // CX: where the data cards stand                          // G: world units per molecular unit
+const W = p => [44 + (p[0] - 44)*G, 30 + (p[1] - 20)*G, SZ + (p[2] - SZ)*G];   // molecular -> world
+const KQ = Math.sqrt(1.5);
+const NA = 4, AD = 9, NI = 14, NP = 3, N = AD + NI + AD, A1 = AD + NI, DZ = .9, RB = .5, DUP = 3;   // oligo beads; adapter beads per end; insert; primer; rise; bead radius; duplex width
+const NM = DZ / .34;                                                // molecular units per nanometre
+const BASES = 'ACGT', BCOL = ['#43c25c', '#4aa3ff', '#f4c430', '#e2483d'];
+const P5 = '#17a398', P5c = '#9fe0d8', P7 = '#8a5cd6', P7c = '#cfbdf2', PRIM = '#55504a', PHOS = '#ff9f43', SUGAR = '#efe6cf';
+const FWDC = '#2f6fbf', REVC = '#e07b1f', TPLC = '#8a8f94', TPL2 = '#c3c7ca';      // backbone colours: forward, reverse, library strands
+const FCM = matOf('#56626d'), GLASS = matOf('#d9eef1'), PAPER = matOf('#fbfaf3');
+const siteOf = (c, r) => [51 + 14*c, 27 + 14*r];
+// two clusters: A grows from the top strand (on a P7 oligo), B from the bottom strand (on a P5 oligo); a free column between
+const SA = [[3,1],[4,1],[3,2],[4,2],[3,0],[4,0],[3,3],[4,3]], SBs = SA.map(([c, r]) => [c - 3, r]), CLUSTERS = [SA, SBs];
+let SITES = SA;
+const isFwd = i => (SITES[i][0] + SITES[i][1]) % 2 === 0;           // P7 sites carry forward strands
+const parentOf = i => i - (1 << Math.floor(Math.log2(i)));
+const PAIR = [1, 0, 3, 2, 5, 4, 7, 6];                              // forward strand <-> the reverse site it bridges to
+const FINS = Array.from({length:NI}, (_, i) => (i*7 + ((i*i) >> 1) + 3*(i % 5)) % 4);   // forward strand's insert
+const comp = b => 3 - b;
+// A library strand, 5' to 3' (top strand):  P5 . i5 index . read 1 primer site . INSERT . read 2 primer site' . i7' . P7'
+// (real lengths 29 . 8 . 33 . ~300 . 34 . 8 . 24 nt; drawn 4 . 2 . 3 . 14 . 3 . 2 . 4). A prime = the complementary sequence, drawn paler.
+const SEG = { P5:'#17a398', I5:'#e0409a', S1:'#2c3e7a', S2:'#6b7a3a', I7:'#9c6b30', P7:'#8a5cd6' }, lite = c => mix(c, '#ffffff', .55);
+const segF = k => k < 4 ? SEG.P7 : k < 6 ? SEG.I7 : k < AD ? SEG.S2 : k < A1 ? null : k < A1 + 3 ? lite(SEG.S1) : k < A1 + 5 ? lite(SEG.I5) : lite(SEG.P5);
+const segR = k => k < 4 ? SEG.P5 : k < 6 ? SEG.I5 : k < AD ? SEG.S1 : k < A1 ? null : k < A1 + 3 ? lite(SEG.S2) : k < A1 + 5 ? lite(SEG.I7) : lite(SEG.P7);
+const segT = j => j < 4 ? lite(SEG.P7) : j < 6 ? lite(SEG.I7) : j < AD ? lite(SEG.S2) : j < A1 ? null : j < A1 + 3 ? SEG.S1 : j < A1 + 5 ? SEG.I5 : SEG.P5;
+const FCOL = Array.from({length:N}, (_, k) => segF(k) || BCOL[FINS[k - AD]]);                    // forward strand, from its P7 oligo up
+const RCOL = Array.from({length:N}, (_, k) => segR(k) || BCOL[comp(FINS[N - 1 - k - AD])]);      // reverse strand, from its P5 oligo up
+const TCOL = Array.from({length:N}, (_, j) => segT(j) || BCOL[comp(FINS[j - AD])]);              // library top strand, from its 3' end (P7')
+const BCOLS = Array.from({length:N}, (_, j) => FCOL[N - 1 - j]);                                  // library bottom strand, from its 3' end (P5')
+const READ = Array.from({length:NI}, (_, c) => comp(FINS[NI - 1 - c]));   // read 1, on the forward strand
+const READ2 = FINS.slice();                                              // read 2, on the reverse strand
+const IDXS = 'ATCACG', IDX2S = 'GCTTAG', RLEN = 150, SHOWN = 8;
+const CY = [126.4, 102, 77.6, 53.2, 28.8, 4.4];                      // data cards, left to right
+const cycNo = n => n < SHOWN ? n : RLEN;                            // cycles 1..7 are played, then the last one
+const posOf = n => n >= SHOWN ? NI : n;                             // how many read beads exist after n shown cycles
+const rdStr = (R, n) => { const r = R.slice(0, Math.min(n, SHOWN - 1)).map(b => BASES[b]).join(''); return n >= SHOWN ? r + '..' + BASES[R[NI - 1]] : r; };
+const POOL = [[48,26,36],[62,84,40],[108,30,38],[110,74,35],[78,56,43],[92,86,41],[70,23,42],[100,50,44],[80,36,45],[56,60,38]];
+
+const lerp = (a, b, t) => a.map((v, i) => v + (b[i] - v)*t), c01 = v => Math.max(0, Math.min(1, v));
+const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const mu = w => `style="stroke-width:${w.toFixed(2)}"`;
+const bead = (p, r, col, w = .5, sc = INK) => { const q = P(...W(p)); return `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${f(r*KQ*G)}" fill="${col}" stroke="${sc}" stroke-width="${w}"/>`; };
+const ring = (p, r, col, wd = .5, op = 1) => { const q = P(...W(p)); return `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${f(r*KQ*G)}" fill="none" stroke="${col}" ${mu(wd)} opacity="${f(op)}"/>`; };
+const halo = (p, r, col, op) => { const q = P(...W(p)); return `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${f(r*KQ*G)}" fill="${col}" opacity="${op.toFixed(2)}"/>`; };
+const note = (p, str, col = INK, size = 3) => { const q = P(...W(p)); return `<text x="${f(q[0])}" y="${f(q[1])}" font-size="${size}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="800" fill="${col}" stroke="#f2efe7" style="stroke-width:.9;paint-order:stroke">${str}</text>`; };
+// a strand: a coloured backbone (which strand it is), then its beads (the bases) from far to near
+function chain(pts, cols, n = pts.length, rib = PRIM){
+  if (n < 1) return ''; const pp = pts.slice(0, n), d = pd(pp.map(W), false);
+  const s = n > 1 ? `<path d="${d}" fill="none" stroke="${INK}" ${mu(1.75)} stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${rib}" ${mu(1.25)} stroke-linecap="round" stroke-linejoin="round"/>` : '';
+  return s + pp.map((p, i) => [depthOf(W(p)), bead(p, RB, cols[i], 1.1, rib)]).sort((a, b) => a[0] - b[0]).map(x => x[1]).join('');
+}
+const rungs = (A, B, n) => { let d = ''; for (let i = 0; i < n; i++) if (A[i] && B[i]) d += pd([W(A[i]), W(B[i])], false);
+  return d ? `<path d="${d}" fill="none" stroke="${INK}" ${mu(.3)} opacity=".6"/>` : ''; };
+// the fluorophore (~1 nm, as big as the nucleotide): a star in the base's colour; lit = glowing
+const star = (p, r, col, lit = 0) => { const q = P(...W(p)), R = r*KQ*G; let d = '';
+  for (let i = 0; i < 16; i++){ const a = i*Math.PI/8, rr = i % 2 ? R*.5 : R; d += (i ? 'L' : 'M') + f(q[0] + rr*Math.sin(a)) + ' ' + f(q[1] - rr*Math.cos(a)); }
+  return (lit > 0 ? `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${f(R*2.3)}" fill="${col}" opacity="${(.5*lit).toFixed(2)}"/>` : '')
+    + `<path d="${d}Z" fill="${col}" stroke="${INK}" stroke-width=".5" stroke-linejoin="round"/><circle cx="${f(q[0])}" cy="${f(q[1])}" r="${f(R*.28)}" fill="#ffffff"/>`; };
+// the 3' block: a dark cap on the sugar's 3' position, where the next nucleotide would have to attach
+const cap = (p, r = .34) => { const q = P(...W(p)), R = r*KQ*G; return `<rect x="${f(q[0] - R)}" y="${f(q[1] - R)}" width="${f(2*R)}" height="${f(2*R)}" rx="${f(R*.25)}" fill="${INK}"/><path d="M${f(q[0] - R*.5)} ${f(q[1])}L${f(q[0] + R*.5)} ${f(q[1])}" stroke="#f2efe7" ${mu(.3)}/>`; };
+// a free dNTP, ~1 nm: base (coloured) + sugar + three phosphates; labelled = dye on the base and a block on the sugar's 3' end
+const dparts = p => ({ sugar: add(p, [0, -.72, -.2]), ph: [0, 1, 2].map(i => add(p, [0, -1.25 - .48*i, -.35 - .12*i])), dye: add(p, [0, 1.5, 1.3]), block: add(p, [0, -.72, .55]) });
+function dntp(p, col, labelled){ const q = dparts(p);
+  let s = `<path d="${pd([W(p), W(q.sugar), ...q.ph.map(W)], false)}" fill="none" stroke="${INK}" ${mu(.35)}/>` + q.ph.slice().reverse().map(x => bead(x, .25, PHOS, .35)).join('') + bead(q.sugar, .32, SUGAR, .35);
+  if (labelled) s += `<path d="${pd([W(p), W(q.dye)], false)}" fill="none" stroke="${INK}" ${mu(.4)}/>` + star(q.dye, 1.15, col);
+  s += bead(p, RB, col);
+  if (labelled) s += cap(q.block);
+  return s; }
+// DNA polymerase, ~6 nm: palm (active site at the 3' end), fingers (close on the dNTP) and thumb (holds the duplex)
+const PR = 7.5;
+const polyAt = (p, a, b) => { const c = W(p), R = PR*G; return [0, 1, 2].map(i => c[i] + CAM_R[i]*a*R + CAM_U[i]*b*R); };
+// a plain rounded clamp: one thick C closed round the duplex, open toward the single-stranded template ahead of it.
+// The two tips are the fingers and thumb, the closed back is the palm, the dot in the middle is the active site.
+function polymerase(p, m, flip = 1){ const R = PR*G*KQ, pts = [];
+  for (let i = 0; i <= 32; i++){ const t = (48 + 264*i/32)*Math.PI/180; pts.push(P(...polyAt(p, .58*Math.sin(t), .58*Math.cos(t)*flip))); }
+  const d = 'M' + pts.map(q => f(q[0]) + ' ' + f(q[1])).join('L'), c = P(...polyAt(p, 0, 0));
+  const st = (col, w, extra = '') => `<path d="${d}" fill="none" stroke="${col}" style="stroke-width:${(w*R).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round" ${extra}/>`;
+  return `<g opacity=".8">${st(INK, .56)}${st(m.m, .5)}${st(m.l, .2, 'opacity=".7"')}</g><circle cx="${f(c[0])}" cy="${f(c[1])}" r="${f(.08*R)}" fill="${m.d}" opacity=".8"/>`; }
+
+/* ---------- shapes of an N-bead strand (molecular units) ---------- */
+const sway = (i, ph) => [1.2*(i/(N - 1))*Math.sin(i*.26 + ph), 1.2*(i/(N - 1))*Math.cos(i*.2 + ph*1.7)];
+const stand = (s, i, ph = 0) => { const w = sway(i, ph); return [s[0] + w[0], s[1] + w[1], SZ + 1 + DZ*i]; };
+const perpOf = (a, b) => { const d = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [-(b[1] - a[1])/d*DUP, (b[0] - a[0])/d*DUP, 0]; };
+const arch = (a, b, i) => { const t = i/(N - 1), e = (1 - Math.cos(Math.PI*t))/2, pp = perpOf(a, b), tx0 = b[0] - pp[0], ty0 = b[1] - pp[1];
+  return [a[0] + (tx0 - a[0])*e, a[1] + (ty0 - a[1])*e, SZ + 1 + 10.4*Math.sin(Math.PI*t)]; };
+const archKid = (a, b, k) => k < NA ? stand(b, k) : add(arch(a, b, N - 1 - k), perpOf(a, b));
+const OFF = [DUP, 0, 0];
+const libT = j => [76, 40 + DZ*j, 44], libC = j => [76 + DUP, 40 + DZ*j, 44];
+const IDX = Array.from({length:N}, (_, k) => k);
+
+/* ---------- the flow cell, 6x: four lanes ---------- */
+const FX = 6, FY = 70, FG = 6, NL = 8, LW = .3, laneU = i => .55 + i*.4;      // eight lanes (the classic HiSeq layout)
+function flowCell(st){
+  const z0 = 2, z1 = 5.6, zt = z1 + .04, g = FG;
+  const R = (u0, v0, u1, v1, dz = 0) => [[FX + u0*g, FY + v0*g, zt + dz], [FX + u1*g, FY + v0*g, zt + dz], [FX + u1*g, FY + v1*g, zt + dz], [FX + u0*g, FY + v1*g, zt + dz]];
+  const flowing = st.anim === 'amp' || st.anim === 'ext' || st.anim === 'turn';
+  let s = box(FX, FY, z0, FX + 4.2*g, FY + 11*g, z1, FCM, toneI, 1.2);
+  s += shape(R(.45, 1.9, 3.75, 9.1), CLEAR.l, .9);
+  let ticks = '';
+  for (let i = 0; i < NL; i++){ const u = laneU(i);
+    s += shape(R(u, 2.15, u + LW, 8.85, .01), flowing ? '#ffd3e4' : '#cdeef4', .6);
+    for (let v = 2.7; v < 8.8; v += .56) ticks += pd([[FX + u*g, FY + v*g, zt + .02], [FX + (u + LW)*g, FY + v*g, zt + .02]], false);       // imaging tiles
+    for (const v of [1.35, 9.65]) s += shape(on(PZ(zt), ellUV(FX + (u + LW/2)*g, FY + v*g, .78, .78, 10)), METAL.l, .5) + shape(on(PZ(zt), ellUV(FX + (u + LW/2)*g, FY + v*g, .34, .34, 8)), '#2b2523', .3);
+    s += `<text transform="${txM(P(FX + (u + LW/2)*g, FY + 10.22*g, zt), Dv(0,-1,0), Dv(1,0,0))}" font-size="1.6" fill="#f2efe7" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="800">${i + 1}</text>`; }
+  s += `<path d="${ticks}" fill="none" stroke="${INK}" stroke-width=".6" opacity=".35"/>`;
+  for (const v of [.3, .6, .9]) s += fill(pd(R(.9, v, 3.3, v + .1)), FCM.d);
+  for (let k = 0; k < 9; k++) s += fill(pd(R(3.86, 4.2 + k*.3, 4.08, 4.2 + k*.3 + (k % 3 ? .1 : .18))), '#f2efe7');      // barcode on the carrier edge
+  // clusters: they appear with amplification and light up base by base
+  const RD = st.read === 2 ? READ2 : READ, nC = st.lib < 3 ? 0 : 120, cyc = st.seq, glow = st.anim === 'sbs' && st.u > .4 && st.u < .75;
+  const bi = cyc > 0 ? RD[posOf(cyc) - 1] : 0;
+  for (let i = 0; i < nC; i++){ const u = laneU(i % NL) + .04 + (i*37 % 13)/13*.22, v = 2.4 + (i*53 % 17)/17*6.2, rr = .14 + .07*st.rounds;
+    s += fill(pd(on(PZ(zt + .03), ellUV(FX + u*g, FY + v*g, rr, rr, 6))), cyc > 0 ? BCOL[(bi + i*i + (i >> 1)*cyc) % 4] : '#ffffff', cyc > 0 && !glow ? 'opacity=".55"' : ''); }
+  // the spot that is magnified (on lane 2), and the zoom lines to the patch
+  const sx = FX + (laneU(3) + LW/2)*g, sy = FY + 5.5*g;
+  s += ink(pd(on(PZ(zt + .04), rectUV(sx - .9, sy - .9, sx + .9, sy + .9))), 1.1);
+  if (st.lib >= 3) s += fill(pd(on(PZ(zt + .04), ellUV(sx, sy, .5, .5, 8))), cyc > 0 ? BCOL[bi] : '#ffffff');
+  s += `<path d="${pd([[sx + 1, sy - 1, zt], [44, 30, SZ]], false)}${pd([[sx + 1, sy + 1, zt], [44, 142, SZ]], false)}" fill="none" stroke="${INK}" stroke-width="1" stroke-dasharray="${f(3*INK_K)} ${f(3*INK_K)}" opacity=".7"/>`;
+  return s;
+}
+
+/* ---------- the data: camera image -> base calls -> FASTQ files for this library ---------- */
+const nRead = (st, r) => r === 1 ? (st.read === 2 || st.idx > 0 ? SHOWN : st.seq < 1 ? 0 : st.anim === 'sbs' && st.u < .4 ? st.seq - 1 : st.seq)
+  : (st.read < 2 || st.seq < 1 ? 0 : st.anim === 'sbs' && st.u < .4 ? st.seq - 1 : st.seq);
+const nIdx = st => st.anim === 'idx' ? Math.floor(c01((st.u - .35)/.6)*6 + .001) : st.idx;
+const nIdx2 = st => st.anim === 'idx2' ? (st.u > .5 ? 6 : st.u > .36 ? 3 : 0) : st.idx2;
+function card(y0, title, lines, hot, extra = ''){
+  const x0 = CX, x1 = CX + 1.2, z0 = 2, z1 = 26, w = 22;
+  let s = box(x0, y0, z0, x1, y0 + w, z1, PAPER, toneI, 1.1);
+  if (facing([1,0,0])){ const X = x1 + .06;
+    s += shape(on(PX(X - .02), rectUV(y0 + .3, z1 - 4.4, y0 + w - .3, z1 - .3)), hot ? 'var(--accent,#f3a6bb)' : '#3d3935', .6);
+    s += tx(X, y0 + w/2, z1 - 3.1, title, 1.7, hot ? INK : '#f6f2e6', 800);
+    lines.forEach((ln, i) => { if (ln) s += tx(X, y0 + w/2, z1 - 7.6 - 3.1*i, ln[0], ln[2] || 1.45, ln[1] || INK, 700); });
+    s += extra; }
+  return s;
+}
+function dataCards(st){
+  const sbs = st.anim === 'sbs', im = sbs && st.u >= .4 && st.u < .75, RD = st.read === 2 ? READ2 : READ, cyc = st.seq;
+  const n1 = nRead(st, 1), n2 = nRead(st, 2), ni = nIdx(st), q = n => 'F'.repeat(Math.min(n, SHOWN - 1)) + (n >= SHOWN ? '..F' : '');
+  const X = CX + 1.3, bi = cyc > 0 ? RD[posOf(cyc) - 1] : 0;
+  let dots = '';
+  if (facing([1,0,0])) for (let i = 0; i < 18; i++){ const y = CY[0] + 19.2 - (i % 6)*3.3, z = 15.6 - ((i / 6) | 0)*3.6;
+    const col = st.lib < 3 ? '#33423c' : cyc > 0 ? BCOL[(bi + i*i + (i >> 1)*cyc) % 4] : '#dfeee6';
+    dots += fill(pd(on(PX(X), ellUV(y, z, 1.0, 1.0, 10))), col, cyc > 0 && !im ? 'opacity=".5"' : ''); }
+  const img = card(CY[0], 'CAMERA IMAGE', [null, null, null, null, [cyc > 0 ? `READ ${st.read} CYCLE ${cycNo(cyc)}` : st.lib >= 3 ? 'CLUSTERS, NOT LIT' : 'NO CLUSTERS YET', '#857d6e', 1.3]], im,
+    (facing([1,0,0]) ? fill(pd(on(PX(CX + 1.27), rectUV(CY[0] + 1.6, 5.6, CY[0] + 20.4, 20.4))), '#1d2a26') : '') + dots);
+  const calls = []; for (let k = Math.max(1, cyc - 2); k <= cyc; k++) calls.push([`CYCLE ${String(cycNo(k)).padStart(3, ' ')}  ${BASES[RD[posOf(k) - 1]]}  Q${36 + (k*7) % 4}`]);
+  while (calls.length < 3) calls.push(null);
+  const bcl = card(CY[1], 'BASE CALLS .bcl', [...calls, ['BASE + PHRED QUALITY', '#857d6e', 1.25], ['PHASING FIXED, BAD', '#857d6e', 1.25], ['CLUSTERS FILTERED OUT', '#857d6e', 1.25]], sbs && st.u >= .75);
+  const fq = (y0, name, tag, seq, qual, sub, hot) => card(y0, name, [[`@C1 ${tag}:N:0:${IDXS}+${IDX2S}`, '#857d6e', 1.15], [seq || '-'], ['+', '#857d6e'], [qual || '-', '#857d6e'], [sub, FWDC, 1.25]], hot);
+  const bx = y => [[CX, y, 2], [CX + 1.3, y + 22, 26]], ni2 = nIdx2(st);
+  return [ { box: bx(CY[0]), svg: img }, { box: bx(CY[1]), svg: bcl },
+    { box: bx(CY[2]), svg: fq(CY[2], 'LIB_R1.fastq.gz', 1, rdStr(READ, n1), q(n1), 'READ 1: FORWARD STRAND', sbs && st.read === 1) },
+    { box: bx(CY[3]), svg: fq(CY[3], 'LIB_I1.fastq.gz', 1, IDXS.slice(0, ni), 'F'.repeat(ni), 'INDEX 1 READ: i7', st.anim === 'idx') },
+    { box: bx(CY[4]), svg: fq(CY[4], 'LIB_I2.fastq.gz', 2, IDX2S.slice(0, ni2), 'F'.repeat(ni2), 'INDEX 2 READ: i5', st.anim === 'idx2') },
+    { box: bx(CY[5]), svg: fq(CY[5], 'LIB_R2.fastq.gz', 2, rdStr(READ2, n2), q(n2), 'READ 2: REVERSE STRAND', sbs && st.read === 2) } ];
+}
+
+/* ---------- the magnified patch and its molecules ---------- */
+let CF_LABELS = [];
+function micro(st, m){
+  const A = st.anim, u = st.u, L = [], lab = (at, text, on = false) => { if (at) L.push({ at: W(at), text, on }); }, labW = (at, text, on = false) => L.push({ at, text, on });
+  let s = box(44, 30, 2, 156, 142, SZ, GLASS, toneI, 1.4);
+  // scale bar: 5 nm
+  { const a = W([46, 86.5, SZ]), b = W([46 + 5*NM, 86.5, SZ]); s += line([a, b], 1.6) + line([[a[0], a[1] - 1.5, a[2]], [a[0], a[1] + 1.5, a[2]]], 1.2) + line([[b[0], b[1] - 1.5, b[2]], [b[0], b[1] + 1.5, b[2]]], 1.2) + note([46 + 2.5*NM, 88.4, SZ], '5 nm', INK, 3.2); }
+  const items = [], put = (at, svg) => items.push({ at: W(at), svg });
+  const nS = st.lib >= 3 ? 1 << st.rounds : 0, half = A === 'amp' ? nS >> 1 : nS;
+  const keep = i => st.read === 2 ? !isFwd(i) : isFwd(i), gone = i => st.seq >= 0 && !keep(i), RD = st.read === 2 ? READ2 : READ;
+  const BR = A === 'amp' || A === 'turn';
+  const isPar = i => A === 'amp' ? i < half : isFwd(i), mate = i => A === 'amp' ? (i < half ? i + half : parentOf(i)) : PAIR[i], firstKid = A === 'amp' ? half : 1;
+  const ribOf = i => isFwd(i) ? FWDC : REVC;
+  const used = new Set(); for (const CS of CLUSTERS){ for (let i = 0; i < nS; i++) used.add(CS[i].join()); if (st.lib >= 2) used.add(CS[0].join()); }
+  // lawn: every free site carries a short oligo, P7 or P5 in a checkerboard
+  let lp5 = null, lp7 = null;
+  for (let c = 0; c < 5; c++) for (let r = 0; r < 5; r++){ if (used.has(c + ',' + r)) continue; const q = siteOf(c, r), p7 = (c + r) % 2 === 0, pts = Array.from({length:NA}, (_, i) => stand(q, i)), col = p7 ? P7 : P5;
+    put(pts[1], chain([[q[0], q[1], SZ], ...pts], [col, col, col, col, col], NA + 1, p7 ? FWDC : REVC).replace(/<circle[^>]*\/>/, ''));
+    if (p7 && c === 2 && r === 4) lp7 = pts[NA - 1]; if (!p7 && c === 2 && r === 3) lp5 = pts[NA - 1]; }
+  lab(lp7, 'P7 OLIGO', A === 'hyb'); lab(lp5, 'P5 OLIGO', A === 'hyb' || (BR && u < .4));
+  const foot = q => `<path d="${pd([W([q[0], q[1], SZ]), W(stand(q, 0))], false)}" fill="none" stroke="${INK}" ${mu(.6)}/>`;
+  // incoming dNTP for the next bead of a growing strand (pool -> the polymerase's active site), and the pyrophosphate that leaves
+  let ppi = null, inc = null;
+  const feed = (g, target, colOf, i0) => { const n = Math.floor(g + 1e-6), fr = g - n; let o = '';
+    if (target(n)){ const p = lerp(POOL[(n + i0) % POOL.length], target(n), ease(c01(fr*1.15))); o += dntp(p, colOf(n), false); inc = p; }
+    if (n > 0 && fr < .9 && target(n - 1)){ const p = add(target(n - 1), [1.2, -2 - 6*fr, 2 + 7*fr]); ppi = p;
+      o += `<g opacity="${f(1 - fr)}">${bead(p, .25, PHOS, .35)}${bead(add(p, [0, -.48, -.12]), .25, PHOS, .35)}</g>`; }
+    return o; };
+  const NK = N - NA;
+
+  // ---- the library fragment: BOTH strands are flowed in; each searches the lawn for the oligo that matches its 3' end
+  const S0 = siteOf(...SA[0]), SB = siteOf(...SBs[0]);
+  const TPL = [ { site: S0, wrong: siteOf(2, 1), tcol: TCOL, ccol: FCOL, rib: FWDC, trib: TPLC, dir: [.25, .5, .83], lib0: j => libT(j), away: [-7, 0, -3], name: 'TOP STRAND', end: "P7'", head: 'P5', kid: 'COPY = FORWARD (ON P7)' },
+                { site: SB, wrong: siteOf(2, 2), tcol: BCOLS, ccol: RCOL, rib: REVC, trib: TPL2, dir: [-.2, -.45, .87], lib0: j => libC(N - 1 - j), away: [9, 0, 4], name: 'BOTTOM STRAND', end: "P5'", head: 'P7', kid: 'COPY = REVERSE (ON P5)' } ];
+  if (st.lib <= 2 || A === 'ext'){
+    const sep = st.lib === 0 ? 0 : A === 'den' ? ease(u) : 1, tau = u*16, tps = [];
+    TPL.forEach((T, t) => {
+      const den = j => add(T.lib0(j), T.away.map(v => v*sep)), paired = j => add(stand(T.site, j), OFF);
+      const probe = q => add(stand(q, NA - 1), [DUP*.7, 0, .7]);
+      let tp, op = 1, nPair = 0, mark = '';
+      if (st.lib < 2) tp = IDX.map(den);
+      else if (A === 'hyb'){                                            // drift -> bump a wrong oligo -> leave -> meet the right one -> zip up
+        const Wr = probe(T.wrong), Rt = probe(T.site), P0 = den(0);
+        const head = u < .18 ? lerp(P0, Wr, ease(u/.18)) : u < .32 ? add(Wr, [.5*Math.sin(tau*3), .5*Math.cos(tau*2.3), .3*Math.sin(tau*4)])
+          : u < .5 ? add(lerp(Wr, Rt, ease((u - .32)/.18)), [0, 0, 9*Math.sin(Math.PI*(u - .32)/.18)]) : Rt;
+        const free = j => add(head, [T.dir[0]*DZ*j + 1.6*(j/N)*Math.sin(j*.4 + tau + t), T.dir[1]*DZ*j + 1.6*(j/N)*Math.cos(j*.33 + tau*1.3), T.dir[2]*DZ*j]);
+        const zip = ease(c01((u - .62)/.38)); nPair = u < .5 ? 0 : Math.max(1, Math.round(zip*NA));
+        tp = IDX.map(j => lerp(lerp(den(j), free(j), c01(u/.15)), paired(j), zip));
+        if (u >= .18 && u < .32) mark = note(add(Wr, [0, 0, 3.4]), 'NO MATCH', '#e2483d', 2.8);
+        if (u >= .5 && u < .8) mark = halo(Rt, 2.6, '#43c25c', .45) + note(add(Rt, [0, 0, 3.6]), 'MATCH', '#2e9e48', 2.8);
+        if (t === 0){ lab(tp[N >> 1], u < .5 ? 'SEARCHING: RANDOM COLLISIONS' : 'FOUND: 3 END ZIPS UP', true); if (u >= .18 && u < .32) lab(stand(T.wrong, NA - 1), 'WRONG OLIGO: P5', true); }
+      } else { tp = IDX.map(paired); nPair = NA; }
+      if (A === 'ext' && u > .72){ const e = ease((u - .72)/.28); tp = tp.map(p => add(p, [8*e, -5*e, 26*e])); op = 1 - e; }
+      if (A === 'ext' && u > .72 && t === 0) lab(tp[N >> 1], 'ORIGINAL STRAND WASHED AWAY', true);
+      tps.push(tp);
+      const e5 = add(tp[N - 1], [0, 0, 1.6]), e3 = add(tp[0], [1.9, 0, -.5]);
+      put(tp[N >> 1], `<g opacity="${f(op)}">${chain(tp, T.tcol, N, T.trib)}${st.lib >= 1 ? note(e5, "5' " + T.head, T.trib, 2.6) + note(e3, "3' " + T.end, T.trib, 2.6) : ''}</g>` + mark);
+      if (st.lib === 1 || (st.lib === 2 && A !== 'hyb' && t === 1)) lab(tp[N - 6], T.name, A === 'den');
+      if (st.lib >= 2){ // the oligo it sits on, and (in Extend) the copy growing from that oligo's 3' end
+        const g = A === 'ext' ? c01(u/.68)*NK : 0, nb = A === 'ext' ? NA + Math.min(NK, Math.floor(g + 1e-6)) : NA;
+        const fp = IDX.map(k => stand(T.site, k)), site3 = add(fp[Math.min(N - 1, nb)], [DUP/2, 0, 0]);
+        if (A === 'ext' && u < .72){ put(add(site3, [-6, -6, -3]), polymerase(site3, m));
+          if (t === 0){ lab(site3, 'DNA POLYMERASE', true); labW(polyAt(site3, .44, .4), 'FINGERS', true); labW(polyAt(site3, 0, -.58), 'PALM', true); labW(polyAt(site3, -.44, .4), 'THUMB', false); labW(polyAt(site3, 0, -.02), 'ACTIVE SITE', true); } }
+        put(fp[Math.min(N >> 1, nb - 1)], foot(T.site) + (op > .2 ? rungs(fp, tp, A === 'ext' ? nb : nPair) : '') + chain(fp, T.ccol, nb, T.rib) + (A === 'hyb' ? '' : note(add(fp[0], [-3.6, 0, -.4]), "5' fixed", T.rib, 2.6) + (nb > NA ? note(add(fp[nb - 1], [-2.2, 0, .4]), "3'", T.rib) : '')));
+        if (A === 'ext' && u < .68) put(add(fp[N - 1], [4, 4, 8]), feed(g, n => n < NK ? add(fp[NA + n], [DUP*.35, 0, 0]) : null, n => T.ccol[NA + n], t*4));
+        if (A === 'ext'){ lab(fp[Math.max(1, nb - 5)], T.kid, true); if (t === 0){ if (inc) lab(inc, 'INCOMING dNTP', true); if (ppi) lab(ppi, 'PYROPHOSPHATE', true); } }
+        else if (t === 0 && A !== 'hyb') lab(tp[N - 6], 'TEMPLATE', false);
+      }
+    });
+    if (st.lib === 0) put(add(tps[0][N >> 1], [1, 0, -.5]), rungs(tps[0], IDX.map(j => tps[1][N - 1 - j]), N));
+    // what a library fragment is made of (named on the top strand; the bottom strand carries the complements)
+    if (st.lib <= 1){ const tp = tps[0], on = A === 'den';
+      lab(tp[N - 2], 'P5', on); lab(tp[A1 + 3], 'i5 INDEX', on); lab(tp[A1 + 1], 'READ 1 PRIMER SITE', on); lab(tp[AD + (NI >> 1)], 'INSERT: YOUR DNA', on);
+      lab(tp[7], 'READ 2 PRIMER SITE', on); lab(tp[4], 'i7 INDEX', on); lab(tp[1], 'P7', on); }
+  }
+  // ---- tethered strands: standing, bridging, being copied
+  const tips = []; let fLab = null, rLab = null;
+  for (const [ci, CS] of CLUSTERS.entries()){ SITES = CS; const labc = ci ? () => {} : lab;
+  for (let i = 0; i < nS; i++){
+    if (st.lib === 3 && A === 'ext') break;
+    const q = siteOf(...SITES[i]), cols = isFwd(i) ? FCOL : RCOL, ph = i*1.3;
+    let pts = IDX.map(k => stand(q, k, ph)), n = N, op = 1, extra = '', pre = null;
+    if (BR){
+      const bend = ease(c01(u/.25)), back = ease(c01((u - .7)/.3)), w = bend*(1 - back), g = c01((u - .25)/.45)*NK;
+      if (isPar(i)){ const b = siteOf(...SITES[mate(i)]); pts = pts.map((p, k) => lerp(p, arch(q, b, k), w));
+        if (i === 0) labc(pts[N >> 1], A === 'turn' ? 'SECOND BRIDGE' : 'BRIDGE', u < .7); }
+      else { const pa = siteOf(...SITES[mate(i)]); n = u < .25 ? NA : NA + Math.min(NK, Math.floor(g + 1e-6));
+        const ak = k => lerp(stand(q, k, ph), archKid(pa, q, k), k < NA ? 0 : w); pts = pts.map((_, k) => ak(k));
+        const par = IDX.map(k => lerp(stand(pa, k, mate(i)*1.3), arch(pa, q, k), w));
+        if (u < .7) extra += rungs(pts, par.slice().reverse(), n);
+        if (u >= .25 && u < .7){ const site3 = lerp(pts[Math.min(N - 1, n)], par[N - 1 - Math.min(N - 1, n)], .5); pre = site3;
+          extra += feed(g, k => k < NK ? lerp(ak(NA + k), par[N - 1 - NA - k], .35) : null, k => cols[NA + k], i);
+          if (i === firstKid){ labc(site3, 'DNA POLYMERASE', true); labc(pts[Math.max(1, n - 5)], isFwd(i) ? 'NEW FORWARD STRAND' : 'NEW REVERSE STRAND', true); if (inc) labc(inc, 'INCOMING dNTP', true); } } }
+    }
+    if (A === 'idx2' && keep(i)){ // index 2 read: the free 3' end (P5') bends to a P5 oligo; that oligo is extended to read the i5 index
+      const b = siteOf(...SITES[PAIR[i]]), w = ease(c01(u/.25))*(1 - ease(c01((u - .72)/.28))); pts = pts.map((pp, k) => lerp(pp, arch(q, b, k), w));
+      const nb = u > .72 ? 0 : u > .5 ? 2 : u > .36 ? 1 : 0, kid = [4, 5].slice(0, nb).map(k => archKid(q, b, k)), all = [...[0, 1, 2, 3].map(k => stand(b, k)), ...kid];
+      extra += foot(b) + (w > .9 ? rungs(all, IDX.map(k => pts[N - 1 - k]), all.length) : '') + (nb ? halo(kid[nb - 1], 2.4, SEG.I5, .5) : '') + chain(all, [P5, P5, P5, P5, SEG.I5, SEG.I5], all.length, REVC);
+      labc(pts[N >> 1], 'BENDS TO A P5 OLIGO', u < .4); if (nb) labc(kid[nb - 1], 'i5 INDEX READ', true); }
+    const blocked = st.seq >= 0 && keep(i) && !(A === 'lin' && u < .45) && A !== 'idx2';        // free 3' ends are capped so only the primer can be extended
+    const showProd = !(st.read === 1 && st.idx > 0 && A !== 'idx') && !(A === 'idx' && u >= .35);
+    if (gone(i)){ if (A !== 'lin') continue; const e = ease(c01(u/.5)); if (e >= 1) continue; pts = pts.map(p => add(p, [4*e, 0, 4 + 22*e]));
+      put(pts[N >> 1], `<g opacity="${f(1 - e)}">${chain(pts.slice(NA), cols.slice(NA), NK, ribOf(i))}</g>`); put(stand(q, 1), foot(q)); continue; }
+    // sequencing: primer on the free-end adapter, the read growing down toward the glass, one base per cycle
+    if (st.seq >= 0 && keep(i) && showProd){
+      const pe = A === 'lin' ? ease(c01((u - .5)/.5)) : 1, done = A === 'sbs' ? st.seq - 1 : st.seq, nd = posOf(done);
+      const lift = A === 'idx' ? ease(u/.35) : 0, up = p => add(p, [8*lift, 0, 20*lift]);
+      const pr = Array.from({length:NP}, (_, k) => up(lerp(add(pts[A1 + NP - 1 - k], [12, 0, 18]), add(pts[A1 + NP - 1 - k], OFF), pe)));   // on the read primer site, next to the insert
+      const rd = Array.from({length: nd}, (_, c) => up(add(pts[A1 - 1 - c], OFF)));
+      const all = [...pr, ...rd], acol = [PRIM, PRIM, PRIM, ...RD.slice(0, nd).map(b => mix(BCOL[b], '#ffffff', .35))];
+      const cc = Math.max(1, posOf(st.seq)), tip = add(pts[A1 - cc], OFF);
+      if (pe > .1) extra += `<g opacity="${f(pe*(1 - lift))}">${lift ? '' : rungs(all, IDX.map(k => pts[Math.max(0, A1 + NP - 1 - k)]), all.length)}${chain(all, acol, all.length, PRIM)}</g>`;
+      if (A === 'idx' && i === 0) labc(all[all.length >> 1], 'READ 1 COPY', true);
+      if (!lift && (A === 'sbs' || (pe >= 1 && st.seq < SHOWN))) pre = add(tip, [-DUP/2, 0, st.seq ? 0 : 1]);
+      if (A === 'sbs'){ const b = RD[cc - 1], col = BCOL[b];
+        if (u < .4){ const p = lerp(POOL[(i*3 + st.seq) % POOL.length], tip, ease(c01(u/.36))); extra += dntp(p, col, true); if (!tips.length) inc = p; }
+        else { const im = u < .75, kk = im ? 1 : 1 - (u - .75)/.25, qd = dparts(tip);
+          if (st.seq >= SHOWN){ const sk = []; for (let c = SHOWN - 1; c < NI - 1; c++) sk.push(add(pts[A1 - 1 - c], OFF));
+            extra += chain([all[all.length - 1], ...sk, tip], [PRIM, ...sk.map((_, j) => mix(BCOL[RD[SHOWN - 1 + j]], '#ffffff', .35)), col], sk.length + 2, PRIM).replace(/<circle[^>]*\/>/, ''); }
+          else extra += `<path d="${pd([W(all[all.length - 1]), W(tip)], false)}" fill="none" stroke="${PRIM}" ${mu(1.25)} stroke-linecap="round"/>`;
+          extra += (kk > 0 ? halo(tip, im ? 3.2 : 2.2, col, .55*kk) : '') + bead(tip, RB, col)
+            + (u < .82 ? `<g opacity="${f(kk)}"><path d="${pd([W(tip), W(qd.dye)], false)}" fill="none" stroke="${INK}" ${mu(.4)}/>${star(qd.dye, 1.15, col, im ? 1 : 0)}${cap(qd.block)}</g>` : '');
+          if (!tips.length && im){ labc(qd.dye, 'DYE GLOWS: CAMERA READS IT', true); labc(qd.block, 'BLOCKED 3 END', true); }
+          if (!im){ const e = (u - .75)/.25, p = add(tip, [3 + 6*e, -3*e, 3 + 10*e]); extra += `<g opacity="${f(1 - e)}">${star(p, 1.15, col)}${cap(add(p, [2.2, 0, 0]))}</g>`; if (!tips.length) ppi = p; } }
+      }
+      tips.push({ tip, pr, pre });
+    }
+    if (A === 'idx' && keep(i) && u >= .35){ // index 1 read: its primer sits on the read 2 primer site and reads the i7 index next to it
+      const e = ease(c01((u - .35)/.2)), ip = [8, 7, 6].map(k => lerp(add(pts[k], [12, 0, 18]), add(pts[k], OFF), e)), nb = u > .82 ? 2 : u > .64 ? 1 : 0;
+      const prod = [5, 4].slice(0, nb).map(k => add(pts[k], OFF)), all = [...ip, ...prod];
+      extra += rungs(all, [8, 7, 6, 5, 4].map(k => pts[k]), all.length) + (nb ? halo(prod[nb - 1], 2.4, SEG.I7, .5) : '') + chain(all, [PRIM, PRIM, PRIM, lite(SEG.I7), lite(SEG.I7)], all.length, PRIM);
+      if (i === 0){ labc(ip[1], 'INDEX PRIMER', true); labc(pts[4], 'i7 INDEX', true); } }
+    if (pre) put(add(pre, [-6, -6, -3]), polymerase(pre, m, st.seq >= 0 && !BR ? -1 : 1));
+    const top = pts[n - 1], rib = ribOf(i);
+    put(pts[Math.min(N >> 1, n - 1)], `<g opacity="${f(op)}">${foot(q)}${chain(pts, cols, n, rib)}</g>` + extra + (blocked ? cap(add(top, [0, 0, .85]), .3) : '') + (i < 2 && !BR ? note(add(top, [0, 0, 2.2]), "3'", rib) + note(add(pts[0], [-3.6, 0, -.4]), "5' fixed", rib, 2.6) : ''));
+    if (blocked && i === (st.read === 2 ? 1 : 0)) labc(add(top, [0, 0, .85]), '3 END BLOCKED', A === 'lin');
+    if (!BR && isFwd(i) && !fLab && !gone(i)) fLab = pts[9]; if (!BR && !isFwd(i) && !rLab && !gone(i)) rLab = pts[9];
+  }
+  }
+  SITES = SA;
+  if (nS > 1 && !BR && st.seq < 0){ lab(stand(siteOf(...SA[6]), N - 2), st.rounds >= 3 ? 'CLUSTER A: 8 OF ~1000 COPIES' : 'CLUSTER A', false); lab(stand(siteOf(...SBs[6]), N - 2), 'CLUSTER B: FROM THE OTHER STRAND', false); }
+  lab(fLab, 'FORWARD STRAND (ON P7)', st.read === 1 && st.seq >= 0); lab(rLab, 'REVERSE STRAND (ON P5)', st.read === 2 && st.seq >= 0);
+  if (tips.length){ lab(tips[0].pr[0], st.read === 2 ? 'READ 2 PRIMER' : 'READ 1 PRIMER', A === 'lin');
+    if (tips[0].pre){ lab(tips[0].pre, 'DNA POLYMERASE', A === 'sbs' && u < .45); if (A === 'sbs' && u < .4 && inc){ const d = dparts(inc); lab(d.dye, 'FLUORESCENT DYE', true); lab(d.block, '3 BLOCK', true); }
+      if (A === 'sbs' && u >= .75 && ppi) lab(ppi, 'DYE + BLOCK CUT OFF', true); } }
+  // ---- free in solution: dNTPs (labelled and blocked once sequencing starts) and an idle polymerase
+  if (st.lib >= 2){ const lbl = st.seq >= 0 && !(A === 'lin' && u < .5) && !(A === 'idx');
+    const po = A === 'sbs' ? (u < .1 ? u/.1 : u < .4 ? 1 : u < .5 ? 1 - (u - .4)/.1 : 0) : 1;       // sequencing: unused dNTPs are washed out before imaging
+    if (po > 0) POOL.forEach((p, i) => put(p, `<g opacity="${f(po)}">${dntp(p, BCOL[i % 4], lbl)}</g>`));
+    if (A === 'sbs' && u >= .4 && u < .6) lab(POOL[4], 'WASH: UNUSED dNTPs OUT', true);
+    const d = dparts(POOL[3]);
+    lab(POOL[3], 'BASE', false); lab(d.sugar, 'SUGAR', false); lab(d.ph[2], '3 PHOSPHATES', false); if (lbl){ lab(d.dye, 'FLUORESCENT DYE', false); lab(d.block, '3 BLOCK', false); }
+    if (!(A === 'ext' || BR || (st.seq >= 0 && tips.some(t => t.pre)))){ const ip = [79, 70, 34]; put(add(ip, [-6, -6, -3]), polymerase(ip, m)); lab(ip, 'DNA POLYMERASE', false);
+      labW(polyAt(ip, .44, .4), 'FINGERS', false); labW(polyAt(ip, 0, -.58), 'PALM', false); labW(polyAt(ip, -.44, .4), 'THUMB', false); } }
+  CF_LABELS = L;
+  return s + byDepth(items);
+}
+
+/* ---------- scene ---------- */
+function scene(st, m){
+  const btop = boardTop(0, 0, BX, BY, 2, 5), cs = (a, b) => { const o = []; for (const x of [a[0], b[0]]) for (const y of [a[1], b[1]]) for (const z of [a[2], b[2]]) o.push([x, y, z]); return o; };
+  let s = board(0, 0, BX, BY, 2, 5);
+  s += castShadow(cs([FX, FY, 2], [FX + 25.2, FY + 66, 5.6]), 2, btop) + castShadow(cs([44, 30, 2], [156, 142, SZ]), 2, btop);
+  for (const y of CY) s += castShadow(cs([CX, y, 2], [CX + 1.2, y + 22, 26]), 2, btop);
+  s += byDepth([{ box: [[FX, FY, 2], [FX + 25.2, FY + 66, 6]], svg: flowCell(st) }, { box: [[44, 30, 2], [162, 142, 70]], svg: micro(st, m) }, ...dataCards(st)]);
+  const g = FG;
+  s += xrCallouts([{ at: [FX + (laneU(0) + LW/2)*g, FY + 8*g, 5.7], text: 'LANES 1 TO 8', on: !!st.anim }, { at: [FX + (laneU(7) + LW/2)*g, FY + 4.1*g, 5.7], text: 'IMAGING TILE', on: st.anim === 'sbs' },
+    { at: [FX + (laneU(7) + LW/2)*g, FY + 9.65*g, 5.7], text: 'INLET PORTS', on: false }, { at: [FX + (laneU(7) + LW/2)*g, FY + 1.35*g, 5.7], text: 'OUTLET PORTS', on: false },
+    
+    ...(facing([1,0,0]) ? [{ at: [CX + 1.3, CY[1] - 1.2, 22], text: 'DEMULTIPLEX BY INDEX', on: st.seq >= SHOWN }, { at: [CX + 1.3, CY[3] + 11, 26], text: 'FASTQ FILES PER LIBRARY', on: st.seq >= SHOWN }, { at: [CX + 1.3, CY[5] + 4, 26], text: 'NEXT: QC, TRIM, ALIGN', on: st.read === 2 && st.seq >= SHOWN }] : []),
+    ...CF_LABELS], [66, 134, 56, 116, 0, 40]);
+  return s;
+}
+
+/* ---------- behaviour ---------- */
+let ui;
+function play(st, name, secs, note2, then){ st.anim = name; st.u = 0; if (note2) ui.flash(note2, 3400);
+  ui.animate(dt => { st.u = Math.min(1, st.u + dt/secs); if (st.u >= 1){ st.anim = null; if (then) then(); return false; } return true; }); }
+const busy = st => st.anim ? (ui.flash('One moment'), true) : false;
+function denature(st){ if (busy(st)) return; if (st.lib > 0) return ui.flash('Already single strands');
+  st.lib = 1; play(st, 'den', 2, 'NaOH pulls the two strands apart; BOTH are flowed onto the flow cell'); }
+function hybridize(st){ if (busy(st)) return; if (st.lib < 1) return ui.flash('Denature the library first'); if (st.lib > 1) return ui.flash('Already bound to the lawn');
+  st.lib = 2; play(st, 'hyb', 8, 'Strands drift and bump into oligos at random; only a complementary 3 end sticks'); }
+function extend(st){ if (busy(st)) return; if (st.lib < 2) return ui.flash('Hybridize a strand first'); if (st.lib > 2) return ui.flash('The first copy is made');
+  st.lib = 3; play(st, 'ext', 9, 'Polymerase grips the matching dNTP and joins it to the 3 end; two phosphates leave');
+  let told = false; ui.animate(() => { if (st.anim !== 'ext') return false; if (st.u > .72 && !told){ told = true; ui.flash('The original library strands are washed away; only the fixed copies stay', 3200); } return true; }); }
+function amplify(st){ if (busy(st)) return; if (st.lib < 3) return ui.flash('Make the first copy first: Extend');
+  if (st.seq >= 0) return ui.flash('The strands are linearized already'); if (st.rounds >= 3) return ui.flash('The cluster is full: sequence it');
+  st.rounds++; play(st, 'amp', 6, st.rounds < 3 ? 'Each strand bridges to a free oligo; polymerase copies it: forward makes reverse, reverse makes forward' : 'Round 3. Rounds 4 to about 35 are not shown: each cluster ends with about 1000 copies'); }
+// Sequence runs a whole read; if the cluster is not full yet it finishes the bridge amplification first
+function sequence(st, auto){ if (!auto && busy(st)) return; if (st.lib < 3) return ui.flash('Make the first copy first: Extend');
+  const again = () => sequence(st, true);
+  if (st.rounds < 3){ st.rounds++; return play(st, 'amp', 5, st.rounds < 3 ? 'First the clusters: bridge amplification, round ' + st.rounds : 'Round 3. Rounds 4 to about 35 are not shown: about 1000 copies per cluster', again); }
+  if (st.seq < 0){ st.seq = 0; return play(st, 'lin', 2.6, st.read === 2 ? 'Forward strands are cut off, 3 ends blocked; primer 2 binds the reverse strands' : 'Reverse strands are cut off, free 3 ends are blocked; primer 1 binds', again); }
+  if (st.seq >= SHOWN){ if (st.read === 2) return ui.flash('Both reads are complete: FASTQ files for this library');
+    if (!st.idx){ st.idx = 6; return play(st, 'idx', 3.4, 'Index 1 read: read 1 copy is stripped; an index primer reads the i7 barcode', again); }
+    if (!st.idx2){ st.idx2 = 6; return play(st, 'idx2', 4.4, 'Index 2 read: the strand end bends to a P5 oligo, which is extended to read i5'); }
+    return ui.flash('Read 1 and both index reads are done: Turn around for read 2'); }
+  st.seq++; play(st, 'sbs', 2.1, st.seq === 1 ? 'Polymerase adds ONE dNTP with a dye and a 3 block; the camera reads the colour' : st.seq === 2 ? 'Every cycle: add one base, wash, image, cleave dye and block' : st.seq === SHOWN ? 'Cycles 8 to 149 are not shown: a real read is 150 cycles' : '', again); }
+function turnAround(st){ if (busy(st)) return; if (st.read === 2) return ui.flash('Already turned around: Sequence read 2');
+  if (st.seq < SHOWN || !st.idx2) return ui.flash('Finish read 1 and the index reads first: Sequence');
+  st.read = 2; st.seq = -1; play(st, 'turn', 7, '3 ends are unblocked; the forward strands bridge again and polymerase rebuilds the reverse strands'); }
+function resetAll(st){ if (busy(st)) return; st.lib = 0; st.rounds = 0; st.seq = -1; st.u = 0; st.read = 1; st.idx = 0; st.idx2 = 0; }
+
+ui = mountFigure({
+  fig:'13', turn:'full', title:'Flow cell close-up',
+  size:[BX, BY, 62], palette:'blush',
+  state:{ lib:0, rounds:0, seq:-1, read:1, idx:0, idx2:0, anim:null, u:0 },
+  scene,
+  buttons:[
+    { label:'Denature', onClick: st => denature(st) },
+    { label:'Hybridize', onClick: st => hybridize(st) },
+    { label:'Extend', onClick: st => extend(st) },
+    { label:'Bridge amplify', onClick: st => amplify(st) },
+    { label:'Sequence', onClick: st => sequence(st) },
+    { label:'Turn around', onClick: st => turnAround(st) },
+    { label:'Reset', onClick: st => resetAll(st) },
+    { label:'Library prep', onClick: () => { location.href = 'library-prep.html'; } },
+    { label:'Back to sequencer', onClick: () => { location.href = 'sequencer-flowcell.html'; } },
+  ],
+  stats: st => [
+    { label:`Read ${st.read} cycle`, value: `${st.seq < 1 ? 0 : cycNo(st.seq)}/${RLEN}` },
+    { label:'Copies per cluster', small:true, value: st.lib < 3 ? 0 : st.rounds >= 3 && st.anim !== 'amp' ? '~1000 (8 drawn)' : 1 << st.rounds },
+    { label:'Clusters here', small:true, value: st.lib < 3 ? 0 : 2 },
+    { label:'Read 1', value: rdStr(READ, nRead(st, 1)) || '-', small:true }, { label:'Index 1 + 2', value: (IDXS.slice(0, nIdx(st)) || '-') + ' ' + (IDX2S.slice(0, nIdx2(st)) || '-'), small:true }, { label:'Read 2', value: rdStr(READ2, nRead(st, 2)) || '-', small:true } ],
+  params:(st, q) => { for (const key of ['lib', 'rounds', 'seq', 'u', 'read', 'idx', 'idx2']) if (q.has(key)) st[key] = +q.get(key); if (q.has('anim')) st.anim = q.get('anim'); },
+});
+xrMount(() => ui, () => '', { labelsOnly:true });
+</script></body></html>
