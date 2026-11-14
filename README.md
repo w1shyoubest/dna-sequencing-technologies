@@ -1,6 +1,6 @@
 # Tissue to Farm
 
-Not farm to table: tissue to **Farm**, the UC Davis compute cluster. Hand-drawn, interactive figures that follow a sample from DNA to the FASTQ files that land on the cluster, one page per step. Two short-read chemistries are covered: **Illumina** (bridge amplification, sequencing by synthesis) and **Element AVITI** (rolling circle amplification, sequencing by avidity).
+Hand-drawn, interactive figures that follow a sample from DNA to the FASTQ files that land on the cluster, one page per step. Two short-read chemistries are covered: **Illumina** (bridge amplification, sequencing by synthesis) and **Element AVITI** (rolling circle amplification, sequencing by avidity).
 
 Live site: https://w1shyoubest.github.io/second-generation-sequencing/
 
