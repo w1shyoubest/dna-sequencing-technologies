@@ -26,9 +26,9 @@ Open any page in a browser; keep the files in one folder so the buttons that lin
 - **Reading and stepping can be separate steps.** In Illumina the labelled nucleotide that is read is also the one incorporated. In AVITI an avidite is read and then washed off, and a plain nucleotide does the stepping, which lets each step be optimised on its own and is the main reason for its lower error rate.
 - **Indexes and paired ends.** Barcodes in the adapters tell pooled libraries apart; reading the fragment from both ends gives paired reads.
 
-## What is verified, what is inferred
+## Verification & Inference 
 
-These are teaching sketches, not manufacturer documentation. Strand lengths are shortened, only a few cycles and amplification rounds are played, and both instruments are drawn smaller and simpler than life.
+These are study sketches, not manufacturer documentation. Strand lengths are shortened, only a few cycles and amplification rounds are played, and both instruments are drawn smaller and simpler than life.
 
 **AVITI, from Arslan et al., *Sequencing by avidity enables high accuracy with low reagent consumption*, Nat Biotechnol 2024 (doi 10.1038/s41587-023-01750-7):** libraries circularized before loading (Adept kit), denatured, loaded at 8 pM and hybridized to the flow cell; rolling circle amplification on the instrument giving about 1 billion polonies per flow cell; avidites built on a dye-labelled streptavidin core with about three nucleotide arms; an engineered polymerase for binding and a separate one for the unlabelled, blocked stepping nucleotide; four colours; 96.2% of bases above Q30 and 85.4% above Q40; reads of 2 x 150 and 1 x 300; two flow cells served by two fluidics modules and one shared imaging module.
 
