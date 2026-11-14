@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Benchtop sequencer and flow cell</title><style>.mcap{display:none!important}@media (max-width:560px){.stat .v{font-size:20px!important}.stats{align-items:flex-end}}@media (min-width:561px){.vset{top:4px!important}#stats{top:var(--vset-h,44px)!important}}</style><style>@media (max-width:560px){body > header{display:none}}</style><script>window.FIG_A = () => innerWidth <= 560 ? 1.1 : .75;</script><script>window.LBL_U = () => { if (innerWidth > 560) return 0; const s = document.getElementById("fig"); return s && s.clientWidth && s.viewBox.baseVal.width ? s.viewBox.baseVal.width / s.clientWidth : 0; };</script></head><body>
+<title>Library prep</title><style>.mcap{display:none!important}@media (max-width:560px){.stat .v{font-size:20px!important}.stats{align-items:flex-end}}@media (min-width:561px){.vset{top:4px!important}#stats{top:var(--vset-h,44px)!important}}</style><style>@media (max-width:560px){body > header{display:none}}</style><script>window.FIG_A = () => innerWidth <= 560 ? 1.1 : .75;</script><script>window.LBL_U = () => { if (innerWidth > 560) return 0; const s = document.getElementById("fig"); return s && s.clientWidth && s.viewBox.baseVal.width ? s.viewBox.baseVal.width / s.clientWidth : 0; };</script></head><body>
 <script>
 /* ============================================================
    Colorfigures core: projection, shapes, shading, ink, labels, page shell.
@@ -646,432 +646,170 @@ function mountKeypad(spec){
 
 </script>
 <script>
-/* Benchtop sequencing-by-synthesis instrument (in the style of a small Illumina benchtop sequencer) with its flow cell
-   and reagent cartridge, on a lab bench. 1 unit = 1 cm. x = depth (front face at x = XF), y = width, z = up.
+/* Library preparation, shown only as what happens to the DNA (no instruments, no reagent tubes). Two molecules are
+   followed side by side, one for each way of putting the index (barcode) on:
+     ROUTE 1  the index is already in the adapter: full-length forked adapters (P5 + i5 + read 1 site on one arm,
+              read 2 site + i7 + P7 on the other) are ligated on. No PCR is needed (PCR-free).
+     ROUTE 2  short forked adapters carry only the read primer sites; an index PCR then adds i5 + P5 on one side and
+              i7 + P7 on the other, and enriches complete molecules.
+   Beads are schematic: an insert of a few hundred bp is drawn as 20 beads; adapter colours match the flow cell page.
 
-   HOW IT REALLY WORKS
-   1. The flow cell (a glass slide with one lane, in a plastic carrier; the library is already bound to its surface as
-      clusters) goes through the flow cell door onto a temperature-controlled stage, against a fluidic manifold.
-   2. The thawed reagent cartridge slides into the chiller; sippers reach into its wells. Wells (by job): library,
-      denaturant, amplification mix (polymerase + dNTPs for bridge amplification), linearization mix, read 1 and
-      read 2 primers, incorporation mix (polymerase + labelled blocked dNTPs), scan mix, cleavage mix. A buffer bottle and a waste
-      bottle stand behind the bottle door with their own sippers.
-   3. Each cycle: the selector valve picks a reagent, the syringe pump (DOWNSTREAM of the flow cell) pulls it
-      cartridge -> sipper -> valve -> inlet tube -> manifold -> flow cell lane -> outlet tube -> syringe.
-      Polymerase adds ONE fluorescent, blocked base to every strand.
-   4. LEDs light the lane, the objective scans along it and the camera photographs the clusters: colour = base.
-   5. Buffer washes through, the dye and block are cleaved, the syringe empties into the waste bottle. Repeat.
+   STEPS  0 extracted DNA . 1 FRAGMENT (ragged ends) . 2 END REPAIR + A-TAIL (blunt, 5' phosphate, one A on each 3'
+   end) . 3 LIGATE ADAPTERS (T overhang pairs with the A; adapters also join each other: dimers) . 4 CLEAN UP (dimers
+   and free adapters removed) . 5 INDEX PCR (route 2 only) . 6 QC (size, concentration) + POOL with other indexed
+   libraries and PhiX . 7 DENATURE to single strands -> flow cell.
+   After route 1 the ends stay forked (both strands read 5'-P5 ... P7'-3'); after PCR the two strands are fully
+   complementary. Both load onto the flow cell the same way. */
+const BX = 136, BY = 150, SZ = 8, KQ = Math.sqrt(1.5), RB = 1.05, DY = 2.2, DUP = 1.7, ZM = 17, XR = [24, 48, 72, 96], YC = 75, CXQ = 122;
+const BCOL = ['#43c25c', '#4aa3ff', '#f4c430', '#e2483d'];
+const SEG = { P5:'#17a398', I5:'#e0409a', S1:'#2c3e7a', S2:'#6b7a3a', I7:'#9c6b30', P7:'#8a5cd6' }, lite = c => mix(c, '#ffffff', .55);
+const PHOS = '#ff9f43', TPLC = '#8a8f94', TPL2 = '#c3c7ca', GLASS = matOf('#d9eef1'), PAPER = matOf('#fbfaf3');
+const lerp = (a, b, t) => a.map((v, i) => v + (b[i] - v)*t), c01 = v => Math.max(0, Math.min(1, v)), add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const mu = w => `style="stroke-width:${w.toFixed(2)}"`;
+const bead = (p, r, col, w = .5, sc = INK) => { const q = P(...p); return `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${f(r*KQ)}" fill="${col}" stroke="${sc}" stroke-width="${w}"/>`; };
+const note = (p, str, col = INK, size = 3) => { const q = P(...p); return `<text x="${f(q[0])}" y="${f(q[1])}" font-size="${size}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="800" fill="${col}" stroke="#f2efe7" style="stroke-width:.9;paint-order:stroke">${str}</text>`; };
+const flat = (x, y, str, size, col = '#5f6b70') => `<text transform="${txM(P(x, y, SZ + .05), Dv(0,-1,0), Dv(1,0,0))}" font-size="${size}" fill="${col}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="800" letter-spacing=".04em">${str}</text>`;
 
-   PARTS (each fixed to the one named)
-   CASE       rounded shell . fascia . touch screen . flow cell door (top hinge) . chiller door (bottom hinge) .
-              bottle door . back panel: fan grille, rating plate, power inlet + cord, ports . side vents
-   STRUCTURE  base plate (case floor) . deck plate on 4 posts (base plate) . bulkhead (base plate)
-   STAGE      heat sink (deck) . Peltier (heat sink) . stage plate (Peltier) . manifold (stage plate) . flow cell (stage)
-   IMAGING    2 uprights (deck) . rail (uprights) . carriage (rail) . lead screw + bearing + scan motor (uprights) .
-              optics body (carriage) . objective (optics body) . camera (optics body) . green + red LED (optics body)
-   FLUIDICS   chiller heat sink (base) . Peltier . cold plate . chiller fan (base) . cartridge (cold plate) .
-              sipper bar on 2 hangers (deck) . 5 sippers (bar) . valve stand (base) . valve motor . selector valve .
-              syringe pump: motor (bulkhead), plunger, barrel, head . bottle arm (bulkhead) . 2 bottle sippers (arm) .
-              buffer bottle, waste bottle (base) . tubes: bar->valve, buffer->valve, valve->manifold, manifold->pump,
-              pump->waste
-   POWER      inlet (back panel) . power supply (base) . main board (back wall) . case fan (back wall) . computer
-              (behind screen) . ribbon along the roof . motor harness along the side wall . pump wire along the floor */
-const XB = 8, XF = 64, Y0 = 10, Y1 = 78, ZB = 2, ZT = 54, BX = 92, BY = 88;
-const OUT = rrUV(Y0, ZB, Y1, ZT, 4);
-const CREAM = '#f6f2e6', RECESS = '#2b2523', SCREENC = '#1d2a26', GRN = '#8af0ae';
-const BASES = 'ACGT', BCOL = ['#43c25c', '#4aa3ff', '#f4c430', '#e2483d'];
-const NCYC = 8, CYC = 1.5, NCL = 21;
-// A standard run is 2 x 150 cycles (paired-end 150 bp). Only four cycles of each read are played: 1, 2, 3 and 150.
-const RLEN = 150, CYCN = [1, 2, 3, RLEN];
-// what the cartridge wells hold (well column i, row j) and the run step that draws on each
-const REAG = [
-  { i:3, j:0, key:'lib',  name:'LIBRARY',           col:'#e2a9c4' },
-  { i:3, j:1, key:'den',  name:'DENATURANT',        col:'#c9c1b2' },
-  { i:3, j:2, key:'amp',  name:'AMPLIFICATION MIX', col:'#ffb37a' },
-  { i:2, j:0, key:'lin',  name:'LINEARIZATION MIX', col:'#b7a6ea' },
-  { i:2, j:1, key:'p1',   name:'READ 1 PRIMER',     col:'#8fd9d1' },
-  { i:2, j:2, key:'p2',   name:'READ 2 PRIMER',     col:'#6fbfd0' },
-  { i:1, j:0, key:'inc',  name:'INCORPORATION MIX', col:'#f3a6bb' },
-  { i:1, j:1, key:'scan', name:'SCAN MIX',          col:'#a8e6a1' },
-  { i:1, j:2, key:'clv',  name:'CLEAVAGE MIX',      col:'#f4d35e' } ];
-const wellAt = (x0, y0, z, r) => [x0 + 3 + r.i*4, y0 + 3.2 + r.j*4.8, z + 14.05];
-const baseOf = (i, c) => (i*7 + c*3 + (((i + 1)*(c + 2)*5) >> 1) + i*i) % 4;
-const DOORM = matOf('#f1ede0'), FCM = matOf('#56626d'), CARTM = matOf('#f3f1ea'), PCB = matOf('#3f8f5a'), COLD = matOf('#b9d4e6');
-const GREY = matOf('#c3cacc'), STEEL = matOf('#aab2b5');
-const FP = (uv, dx = .3) => on(PX(XF + dx), uv);
-const txB = (x,y,z,str,size,col=INK,weight=700) => `<text transform="${txM(P(x,y,z), Dv(0,1,0), Dv(0,0,-1))}" font-size="${size}" fill="${col}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="${weight}" letter-spacing=".04em">${str}</text>`;
-const bbOf = pts => [[0,1,2].map(i => Math.min(...pts.map(p => p[i]))), [0,1,2].map(i => Math.max(...pts.map(p => p[i])))];
-const mu = w => `style="stroke-width:${w.toFixed(2)}"`;            // a stroke in model units
-const clamp01 = v => Math.max(0, Math.min(1, v)), c01q = clamp01;
-
-
-/* back-to-front order for many parts: a box that is separated from another along an axis must be drawn on the far side
-   first, but only when the two overlap on screen; the rest falls back to depth. (A plain sort with such a rule is not
-   consistent once there are dozens of parts.) */
-function sqSort(parts){
-  parts = parts.filter(Boolean); const n = parts.length, scr = parts.map(p => { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-    for (const x of [p.box[0][0], p.box[1][0]]) for (const y of [p.box[0][1], p.box[1][1]]) for (const z of [p.box[0][2], p.box[1][2]]){ const q = P(x, y, z);
-      x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); }
-    return [x0, y0, x1, y1]; });
-  const dep = parts.map(p => depthOf(boxMid(p.box))), after = parts.map(() => []), need = new Array(n).fill(0);
-  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++){
-    const a = scr[i], b = scr[j]; if (a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]) continue;
-    const o = sepOrder(parts[i], parts[j]); if (o < 0){ after[i].push(j); need[j]++; } else if (o > 0){ after[j].push(i); need[i]++; } }
-  const done = new Array(n).fill(false); let out = '';
-  for (let c = 0; c < n; c++){ let best = -1, free = false;
-    for (let i = 0; i < n; i++){ if (done[i]) continue; const fr = need[i] === 0;
-      if (best < 0 || (fr && !free) || (fr === free && dep[i] < dep[best])){ best = i; free = fr; } }
-    done[best] = true; out += parts[best].svg; for (const j of after[best]) need[j]--; }
-  return out;
+/* ---------- molecules: a duplex is two rows of beads; a bead is [k, colour, dx, dz, radius] at position k along y ---------- */
+const baseAt = (r, k) => { const a = Math.abs(k) + r*11; return (a*7 + ((a*a) >> 1) + 3*(a % 5)) % 4; };
+const insT = (r, k0, k1, grey) => { const o = []; for (let k = k0; k <= k1; k++) o.push([k, grey ? '#d6dadd' : BCOL[baseAt(r, k)]]); return o; };
+const insB = (r, k0, k1, grey) => { const o = []; for (let k = k0; k <= k1; k++) o.push([k, grey ? '#eceeef' : BCOL[3 - baseAt(r, k)]]); return o; };
+const run = (k0, k1, col) => { const o = []; for (let k = k0; k <= k1; k++) o.push([k, col]); return o; };
+const arm = (k0, dir, side, cols) => cols.map((c, i) => [k0 + dir*i, c, side*Math.min(i + 1, 3)*1.15, Math.min(i + 1, 3)*(side < 0 ? .9 : .25)]);
+// forked adapter on one end of an A-tailed fragment (end +1 = right, -1 = left). Strand X = 5' arm . stem . T ; strand Y = stem' . 3' arm.
+// full = route 1: the arms already carry index and P5 / P7; short = route 2: the arms are only the rest of the read primer sites.
+const ARMX = full => full ? [SEG.I5, SEG.I5, SEG.P5, SEG.P5, SEG.P5, SEG.P5] : [SEG.S1, SEG.S1];
+const ARMY = full => (full ? [SEG.I7, SEG.I7, SEG.P7, SEG.P7, SEG.P7, SEG.P7] : [SEG.S2, SEG.S2]).map(lite);
+const adapter = (end, full) => end > 0
+  ? { top: [...run(21, 23, lite(SEG.S2)), ...arm(24, 1, -1, ARMY(full))], bot: [[20, BCOL[3]], ...run(21, 23, SEG.S1), ...arm(24, 1, 1, ARMX(full))] }
+  : { top: [[-1, BCOL[3]], ...run(-4, -2, SEG.S1), ...arm(-5, -1, -1, ARMX(full))], bot: [...run(-4, -2, lite(SEG.S2)), ...arm(-5, -1, 1, ARMY(full))] };
+const fullLib = (r, ix, grey) => ({
+  top: [...run(-10, -7, SEG.P5), ...run(-6, -5, ix[0]), ...run(-4, -2, SEG.S1), [-1, BCOL[3]], ...insT(r, 0, 19, grey), [20, BCOL[0]], ...run(21, 23, lite(SEG.S2)), ...run(24, 25, lite(ix[1])), ...run(26, 29, lite(SEG.P7))],
+  bot: [...run(-10, -7, lite(SEG.P5)), ...run(-6, -5, lite(ix[0])), ...run(-4, -2, lite(SEG.S1)), [-1, BCOL[0]], ...insB(r, 0, 19, grey), [20, BCOL[3]], ...run(21, 23, SEG.S2), ...run(24, 25, ix[1]), ...run(26, 29, SEG.P7)] });
+const IX = [[SEG.I5, SEG.I7], ['#00a6c8', '#7cb518'], ['#9aa0a6', '#9aa0a6']];
+// row 0 = route 1 (index in the adapter), row 1 = route 2 (index PCR); rows 2 and 3 join at pooling
+function stageMols(n){
+  const M = [], at = (r, o) => ({ x: XR[r], yc: YC, z: ZM, ...o }), sep = n === 7 ? 6 : 0;
+  for (let r = 0; r < 2; r++){ const full = r === 0;
+    if (n === 0) M.push(at(r, { top: insT(r, -17, 36), bot: insB(r, -17, 36) }));
+    if (n === 1) M.push(at(r, { top: insT(r, -1, 19), bot: insB(r, 0, 20) }));
+    const tailed = { top: [[-.55, PHOS, 0, 0, .5], ...insT(r, 0, 19), [20, BCOL[0]]], bot: [[-1, BCOL[0]], ...insB(r, 0, 19), [19.55, PHOS, 0, 0, .5]] };
+    const forked = n >= 3 && (full || n <= 4);
+    if (n === 2 || forked) M.push(at(r, { ...tailed, sep }));
+    if (forked) for (const e of [1, -1]) M.push(at(r, { ...adapter(e, full), from: n === 3 ? [0, e*16, 12] : null, sep }));
+    if (!full && n === 5){ M.push(at(r, fullLib(r, IX[0]))); M.push(at(r, { ...fullLib(r, IX[0]), z: ZM + 11, from: [0, 0, -11] })); }
+    if (!full && n >= 6) M.push(at(r, { ...fullLib(r, IX[0]), sep }));
+    if (n === 3){ // adapters that found each other, and adapters left over
+      const L = adapter(-1, full), R = adapter(1, full), sh = (bs, d) => bs.map(b => [b[0] + d, ...b.slice(1)]);
+      M.push({ x: XR[r] + 11, yc: 46, z: ZM + 15, top: [...sh(L.top, 9), ...sh(R.top, -11)], bot: [...sh(L.bot, 9), ...sh(R.bot, -11)], from: [0, 0, 8], junk: 1, name: r === 0 ? 'ADAPTER DIMER' : '' });
+      M.push({ x: XR[r] + 11, yc: 112, z: ZM + 15, top: sh(R.top, -22), bot: sh(R.bot, -22), from: [0, 0, 8], junk: 1, name: r === 0 ? 'FREE ADAPTER' : '' }); }
+  }
+  if (n >= 6){ M.push(at(2, { ...fullLib(2, IX[1]), sep, from: [0, 0, 14] })); M.push(at(3, { ...fullLib(3, IX[2], true), sep, from: [0, 0, 14] })); }
+  return M;
+}
+const bpos = (m, b, top, off) => [m.x + (top ? -1 : 1)*(DUP + (m.sep || 0)) + (b[2] || 0) + off[0], m.yc + (b[0] - 9.5)*DY + off[1], m.z + (top ? .4 : -.2)*(m.sep || 0) + (b[3] || 0) + off[2]];
+function drawMol(m, fIn){
+  const off = m.from ? m.from.map(v => v*(1 - ease(fIn))) : [0, 0, 0];
+  const row = (bs, top) => { const s = bs.slice().sort((a, b) => a[0] - b[0]), pts = s.map(b => bpos(m, b, top, off)), rib = top ? TPLC : TPL2, d = pd(pts, false);
+    return `<path d="${d}" fill="none" stroke="${INK}" ${mu(1.75)} stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${rib}" ${mu(1.25)} stroke-linecap="round" stroke-linejoin="round"/>`
+      + s.map((b, i) => [depthOf(pts[i]), bead(pts[i], b[4] || RB, b[1], b[4] ? .4 : 1.1, b[4] ? INK : rib)]).sort((a, b) => a[0] - b[0]).map(x => x[1]).join(''); };
+  let rg = '';
+  if (!(m.sep > .5)) for (const t of m.top){ if (t[2] || t[4]) continue; const b = m.bot.find(q => q[0] === t[0] && !q[2] && !q[4]); if (b) rg += pd([bpos(m, t, true, off), bpos(m, b, false, off)], false); }
+  return (rg ? `<path d="${rg}" fill="none" stroke="${INK}" ${mu(.3)} opacity=".6"/>` : '') + (facing([1,0,0]) ? row(m.top, true) + row(m.bot, false) : row(m.bot, false) + row(m.top, true));
 }
 
-/* ---------- run state derived from (run, cyc, ph) ---------- */
-function sim(st){
-  const run = st.run === 'run', ph = st.ph, amp = st.run === 'clu' || st.run === 'turn';   // amp: bridge amplification on the flow cell
-  const flow = (run && ph < .35) || amp, img = run && ph >= .35 && ph < .8, wash = run && ph >= .8;
-  const ci = img ? (ph - .35)/.45 : 0;
-  return { run: run || amp, amp, flow, img, wash, ci,
-    cy: 61 + 6*(img ? ci : wash ? 1 - (ph - .8)/.2 : 0),                       // carriage centre along the lane
-    pl: amp ? (ph*3) % 1 : flow ? ph/.35 : img ? 1 : wash ? 1 - (ph - .8)/.2 : 0,                 // syringe fill
-    va: (flow || img || !run || amp ? 0 : ease((ph - .8)/.2)) * Math.PI,               // valve rotor: 0 = cartridge, 180 = buffer
-    called: Math.min(NCYC, st.cyc + (run && ph >= .8 ? 1 : 0)) };
-}
-const readOf = n => [0, 4].map(o => { const k = Math.max(0, Math.min(4, n - o)), r = Array.from({length:k}, (_, c) => BASES[baseOf(0, o + c)]).join(''); return k === 4 ? r.slice(0, 3) + '..' + r[3] : r; }).filter(Boolean).join(' ');
-const cycNo = st => st.run === 'idle' || st.run === 'clu' ? 0 : st.run === 'done' || st.run === 'turn' ? RLEN : CYCN[st.cyc % 4];
-const reagKey = sm => sm.amp ? 'amp' : sm.flow ? 'inc' : sm.img ? 'scan' : sm.wash ? 'clv' : '';
-const ACTIVE = st => st.run === 'run' || st.run === 'clu' || st.run === 'turn';
+const STEPS = [null,
+  { name:'Fragment', note:'The long DNA is cut into pieces of a few hundred bp; the ends are ragged', r:['~350 bp, ragged', '~350 bp, ragged'] },
+  { name:'End repair + A-tail', note:'Ends are blunted, 5 ends get a phosphate, each 3 end gets one extra A', r:['blunt, 5 P, 3 A', 'blunt, 5 P, 3 A'] },
+  { name:'Ligate adapters', note:'Route 1: full adapters, index already inside. Route 2: short adapters, primer sites only', r:['full indexed adapters', 'short adapters'] },
+  { name:'Clean up', note:'The library is kept; adapter dimers and free adapters are washed away', r:['dimers removed', 'dimers removed'] },
+  { name:'Index PCR', note:'Route 2 only: primers add i5 + P5 and i7 + P7 and copy the molecule. Route 1 needs no PCR', r:['no PCR needed', 'index + P5 / P7 added'] },
+  { name:'QC + pool', note:'Size and concentration are checked; libraries with different indexes are pooled, PhiX is spiked in', r:['in the pool', 'in the pool'] },
+  { name:'Denature', note:'NaOH separates the strands; the pool is diluted to loading concentration for the flow cell', r:['single strands', 'single strands'] } ];
 
-/* ---------- consumables ---------- */
-const FC0 = [80, 9, 2.05], FC1 = [68, 58.5, 37.02], FC2 = [53, 58.5, 37.02];
-function fcPos(t){ if (t <= .6){ const u = t/.6, uz = Math.min(1, u*1.6); return [FC0[0] + (FC1[0]-FC0[0])*u, FC0[1] + (FC1[1]-FC0[1])*u, FC0[2] + (FC1[2]-FC0[2])*uz]; }
-  const u = (t - .6)/.4; return [FC1[0] + (FC2[0]-FC1[0])*u, FC1[1], FC1[2]]; }
-function rcPos(t){ if (t <= .3) return [70, 30, 2.05 + 10*(t/.3)];
-  if (t <= .65){ const u = (t - .3)/.35; return [70 - 4*u, 30 + 26*u, 12.05 - 3*u]; }
-  const u = (t - .65)/.35; return [66 - 22*u, 56, 9.05]; }
-// flow cell: 4.2 (x) by 11 (y) by 0.6; drawn only between xa and xb (the rest is on the other side of the front wall)
-function sqFlowCell(x0, y0, z, xa, xb, st){
-  const a = Math.max(x0, xa), b = Math.min(x0 + 4.2, xb); if (b - a < .05) return '';
-  const zt = z + .63, cl = u => Math.max(a, Math.min(b, x0 + u));
-  const rect = (u0, v0, u1, v1) => { const p = cl(u0), q = cl(u1); return q - p < .05 ? null : [[p, y0+v0, zt], [q, y0+v0, zt], [q, y0+v1, zt], [p, y0+v1, zt]]; };
-  const sm = sim(st), used = st.run !== 'idle';
-  let s = box(a, y0, z, b, y0 + 11, z + .6, FCM, toneI, .8), r;
-  if ((r = rect(.6, 1.6, 3.6, 9.4))) s += shape(r, CLEAR.l, .6);
-  for (let i = 0; i < 8; i++){ const u = .68 + i*.36;                                  // eight lanes, each with its own ports
-    if ((r = rect(u, 2.1, u + .26, 8.9))) s += shape(r, sm.flow ? '#ffc4dd' : sm.wash ? '#bfdcff' : '#cdeef4', .3);
-    for (const v of [1.5, 9.75]) if (x0 + u + .13 > a + .2 && x0 + u + .13 < b - .2) s += fill(pd(on(PZ(zt), ellUV(x0 + u + .13, y0 + v, .12, .12, 6))), METAL.l); }
-  for (const v of [.3, .6, .9]) if ((r = rect(.9, v, 3.3, v + .1))) s += fill(pd(r), FCM.d);
-  // clusters in the lane (far too small to see in life; drawn as specks)
-  let d = '', dc = ['', '', '', ''];
-  for (let i = 0; i < 16; i++){ const u = .72 + (i % 8)*.36 + (i*37 % 13)/13*.18, v = 2.5 + (i*53 % 17)/17*6, X = x0 + u, Y = y0 + v;
-    if (X < a + .2 || X > b - .2) continue;
-    const q = pd([[X-.11, Y-.11, zt+.01], [X+.11, Y-.11, zt+.01], [X+.11, Y+.11, zt+.01], [X-.11, Y+.11, zt+.01]]);
-    if (used && sm.called > 0) dc[baseOf(i, sm.called - 1)] += q; else d += q; }
-  if (d && used) s += fill(d, '#ffffff', st.run === 'clu' ? `opacity="${f(st.ph)}"` : '');
-  dc.forEach((q, i) => { if (q) s += fill(q, BCOL[i]); });
-  return s;
-}
-// reagent cartridge: 18 (x) by 16 (y) by 14, foil-sealed wells on top
-function sqCart(x0, y0, z, xa, xb){
-  const a = Math.max(x0, xa), b = Math.min(x0 + 18, xb); if (b - a < .05) return '';
-  let s = box(a, y0, z, b, y0 + 16, z + 14, CARTM, toneI, .9);
-  for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++){ const X = x0 + 3 + i*4, Y = y0 + 3.2 + j*4.8;
-    const rg = REAG.find(r => r.i === i && r.j === j);
-    if (X - 1.6 > a && X + 1.6 < b) s += shape(on(PZ(z + 14.03), ellUV(X, Y, 1.5, 1.5, 12)), rg ? rg.col : '#dfe5e6', .5); }
-  if (b >= x0 + 17.99 && facing([1,0,0])) s += shape(on(PX(b + .04), rrUV(y0 + 2, z + 3, y0 + 14, z + 9.5, .8)), '#ffffff', .6)
-    + tx(b + .08, y0 + 8, z + 5.5, 'REAGENTS', 1.7, INK, 800);
+/* ---------- QC result: a size trace and a concentration ---------- */
+function qcCard(st){
+  const x0 = CXQ, x1 = CXQ + 1.2, y0 = 52, w = 46, z0 = 2, z1 = 27, show = st.step > 6 || (st.step === 6 && (!st.anim || st.u > .3));
+  let s = box(x0, y0, z0, x1, y0 + w, z1, PAPER, toneI, 1.1);
+  if (facing([1,0,0])){ const X = x1 + .06, pl = uv => on(PX(X), uv);
+    s += shape(pl(rectUV(y0 + .3, z1 - 4.6, y0 + w - .3, z1 - .3)), show ? 'var(--accent,#93d3b0)' : '#3d3935', .6) + tx(X, y0 + w/2, z1 - 3.3, 'LIBRARY QC', 2, show ? INK : '#f6f2e6', 800);
+    s += line([[X, y0 + w - 4, 10.4], [X, y0 + 4, 10.4]], .9) + line([[X, y0 + w - 4, 10.4], [X, y0 + w - 4, 21]], .9);
+    if (show){ const pts = []; for (let i = 0; i <= 40; i++){ const t = i/40, y = y0 + w - 4 - t*(w - 8), g = Math.exp(-(((t - .55)/.09)**2)); pts.push([X, y, 10.8 + 9.5*g + .15*Math.sin(i*1.7)]); }
+      s += `<path d="${pd(pts, false)}" fill="none" stroke="${SEG.P7}" stroke-width="2.2" stroke-linejoin="round"/>`;
+      s += tx(X, y0 + w - 4 - .55*(w - 8), 8, 'PEAK 470 bp', 1.6, INK, 800) + tx(X, y0 + w - 10, 8, 'NO DIMER', 1.3, '#857d6e', 700) + tx(X, y0 + w/2, 5.4, 'CONC 4.1 nM: DILUTE + POOL', 1.5, INK, 700) + tx(X, y0 + w/2, 3.2, 'SIZE (bp)', 1.2, '#857d6e', 700); }
+    else s += tx(X, y0 + w/2, 14, 'NOT MEASURED YET', 1.6, '#857d6e', 700); }
   return s;
 }
 
-/* ---------- doors: thin plates on a hinge, with both faces and their edges ---------- */
-function sqPrismY(prof, y0, y1, m, w = 1){
-  const A = prof.map(([x, z]) => [x, y0, z]), B = prof.map(([x, z]) => [x, y1, z]);
-  let s = loft(A, B, n => toneI(n, m));
-  if (vis([0,1,0])) s += shape(B, toneI([0,1,0], m), .6); else if (vis([0,-1,0])) s += shape(A, toneI([0,-1,0], m), .6);
-  return s + ink(pd([A[0], B[0], B[3], A[3]]), w*.7) + ink(pd([A[1], B[1], B[2], A[2]]), w*.7) + hullInk([...A, ...B], w + .8);
-}
-const fcDoorProf = a => { const t = a*100*Math.PI/180, c = Math.cos(t), s = Math.sin(t);
-  return [[0,0],[.8,0],[.8,-15],[0,-15]].map(([dx, dz]) => [XF + .2 + dx*c - dz*s, 49 + dx*s + dz*c]); };
-const rcDoorProf = a => { const t = a*90*Math.PI/180, c = Math.cos(t), s = Math.sin(t);
-  return [[0,0],[.8,0],[.8,20],[0,20]].map(([dx, dz]) => [XF + .2 + dx*c + dz*s, 8 - dx*s + dz*c]); };
-
-/* ---------- the touch screen ---------- */
-function sqScreen(st){
-  const x = XF + .42, sm = sim(st), T = (y, z, str, size, col = GRN) => tx(x, y, z, str, size, col, 700);
-  let s = '';
-  if (st.run === 'idle'){
-    s += T(40, 44.6, !st.fc ? 'LOAD FLOW CELL' : !st.rc ? 'LOAD REAGENTS' : 'READY', 1.9);
-    s += T(40, 39.4, 'FLOW CELL  ' + (st.fc ? 'OK' : '--'), 1.45, st.fc ? GRN : '#5c8f76');
-    s += T(40, 36.4, 'REAGENTS   ' + (st.rc ? 'OK' : '--'), 1.45, st.rc ? GRN : '#5c8f76');
-    s += T(40, 33.6, 'RUN: 2 X 150 CYCLES', 1.25, '#5fae82');
-    if (st.fc && st.rc) s += T(40, 31.2, 'PRESS START', 1.45, '#f4c430');
-    return s;
-  }
-  const done = st.run === 'done', clu = st.run === 'clu', turn = st.run === 'turn';
-  s += T(40, 46.2, done ? 'RUN COMPLETE' : clu ? 'CLUSTER GENERATION' : turn ? 'PAIRED-END TURN' : `READ ${st.cyc < 4 ? 1 : 2} CYCLE ${cycNo(st)}/${RLEN}`, 1.5);
-  s += T(40, 43.6, done ? '2 X 150 CYCLES, 8 SHOWN' : sm.amp ? 'BRIDGE AMPLIFICATION' : sm.flow ? 'ADD ONE BASE' : sm.img ? 'IMAGE CLUSTERS' : 'CLEAVE + WASH', 1.25, '#5fae82');
-  // the camera's picture of the lane: each cluster lights in the colour of the base it just took up
-  for (let i = 0; i < NCL; i++){ const col = i % 7, row = (i / 7) | 0, y = 47.2 - col*2.4, z = 40.6 - row*2.5;
-    const seen = done ? NCYC - 1 : sm.amp ? -1 : sm.img && sm.ci > (col + .5)/7 ? st.cyc : sm.wash ? st.cyc : st.cyc - 1;
-    const c = sm.amp ? '#dfeee6' : seen < 0 ? '#2f4a40' : BCOL[baseOf(i, seen)], rr = clu ? .15 + .63*c01q(st.ph*1.2 - (i % 5)*.04) : .78;   // clusters grow out of single molecules
-    s += fill(pd(on(PX(x), ellUV(y, z, rr, rr, 10))), c, sm.flow && seen >= 0 ? 'opacity=".45"' : ''); }
-  s += T(40, 31.3, readOf(sm.called) || '-', 1.8, '#f6f2e6');
-  return s;
-}
-
-/* ---------- the case ---------- */
-function sqBody(st, m, k){
-  const FRONT = facing([1,0,0]), BACK = facing([-1,0,0]), LEFT = facing([0,1,0]), RIGHT = facing([0,-1,0]);
-  const sm = sim(st);
-  let s = '';
-  if (FRONT) s += fill(pd(on(PX(XF), OUT)), tone([1,0,0], m));
-  if (BACK) s += fill(pd(on(PX(XB), OUT)), tone([-1,0,0], m));
-  s += extrude(OUT, XB, XF, m);
-  if (FRONT){
-    s += shape(FP(rrUV(Y0 + 2.5, ZB + 2.5, Y1 - 2.5, ZT - 2.5, 2.5), .12), CREAM, 1.2);
-    // screen
-    s += act('screen', shape(FP(rrUV(28, 29, 52, 50, 1.5), .22), '#3d3935', 1.1) + fill(pd(FP(rectUV(29.2, 30.1, 50.8, 48.9), .3)), SCREENC) + sqScreen(st));
-    s += shape(FP(rrUV(34, 25.3, 46, 26.8, .7), .22), ACTIVE(st) ? '#43c25c' : st.busy ? '#f4c430' : st.run === 'done' ? '#4aa3ff' : '#c9c1b2', .7);
-    s += tx(XF + .3, 40, 20.6, 'SEQ-ONE', 2.6, INK, 800) + tx(XF + .3, 40, 17.6, 'SEQUENCING BY SYNTHESIS', 1.05, '#857d6e', 700);
-    // bottle door (fixed) with its pull, and the vent above it
-    s += shape(FP(rrUV(13, 7, 29, 33, 1.5), .22), mix(CREAM, '#000000', .05), 1.1) + shape(FP(rrUV(26.2, 16, 27.4, 24, .5), .3), RECESS, .6);
-    s += tx(XF + .32, 20, 9.6, 'BUFFER . WASTE', 1.05, '#857d6e', 700);
-    let v = ''; for (let z = 38; z <= 48; z += 2) v += pd(FP([[15, z], [27, z]], .22), false);
-    s += `<path d="${v}" fill="none" stroke="${INK}" stroke-width="1.3" opacity=".75"/>`;
-    // what shows through an open door: the real parts behind, clipped to the opening
-    const ro = 1 - k;
-    if (st.fcDoor > .01 && ro > .02){ const o = FP(rectUV(55, 35, 73, 48), .2), p = fcPos(st.fcT);
-      const inner = fill(pd(o), RECESS) + box(46, 56, 35, 62, 72, 37, METAL, toneI, .7) + sqFlowCell(p[0], p[1], p[2], XB, XF, st)
-        + box(50, sm.cy - 2.5, 41, 58, sm.cy + 2.5, 48, DARK, toneI, .7) + rod([55.1, sm.cy, 41], [55.1, sm.cy, 38.2], 1.3, METAL, toneI, .6, .9);
-      s += `<g opacity="${f(ro)}">` + clipTo(o, inner) + ink(pd(o), 1.6) + '</g>'; }
-    if (st.rcDoor > .01 && ro > .02){ const o = FP(rectUV(55, 9, 73, 27), .2), p = rcPos(st.rcT);
-      const inner = fill(pd(o), RECESS) + box(43.5, 55, 7.5, 63, 73, 9, COLD, toneI, .7) + sqCart(p[0], p[1], p[2], XB, XF)
-        + [47.5, 50, 52.5, 55, 57.5].map(xs => rod([xs, 64, 27], [xs, 64, 23], .25, METAL, toneI, .4)).join('');
-      s += `<g opacity="${f(ro)}">` + clipTo(o, inner) + ink(pd(o), 1.6) + '</g>'; }
-  }
-  if (BACK){ const bp = (uv, dx = .2) => on(PX(XB - dx), uv);
-    s += shape(bp(rrUV(55, 3.5, 71, 15.5, 1.5)), '#3d3935', 1);
-    let v = ''; for (let z = 5.5; z <= 13.5; z += 2) v += pd(bp([[57, z], [69, z]], .3), false);
-    for (let z = 38; z <= 46; z += 2) v += pd(bp([[16, z], [42, z]], .3), false);
-    s += `<path d="${v}" fill="none" stroke="${INK}" stroke-width="1.3" opacity=".75"/>`;
-    s += shape(bp(rrUV(34, 6, 52, 15, 1)), '#f3f0e6', .9) + txB(XB - .3, 43, 11.2, 'SBS SEQUENCER', 1.5, INK, 800) + txB(XB - .3, 43, 8.2, '100-240V~ 400W', 1.3, INK, 700);
-    s += shape(bp(rectUV(17.5, 5, 23.5, 10)), RECESS, .9);
-    s += shape(bp(rectUV(26.5, 6, 30, 8.6)), RECESS, .6) + shape(bp(rectUV(26.5, 9.6, 28.6, 10.6)), RECESS, .5) + shape(bp(rectUV(29, 9.6, 31.1, 10.6)), RECESS, .5);
-  }
-  if (RIGHT){ let v = ''; for (let z = 34; z <= 46; z += 2) v += pd([[16, Y0 - .15, z], [40, Y0 - .15, z]], false);
-    s += `<path d="${v}" fill="none" stroke="${INK}" stroke-width="1.3" opacity=".75"/>`; }
-  if (LEFT){ const sd = tone([0,1,0], m);
-    s += shape(on(PY(Y1 + .15), rrUV(20, 34, 52, 46, 3)), mix(sd, '#ffffff', .22), 1) + txY(36, Y1 + .25, 37.6, 'SEQ-ONE', 5.2, mix(sd, '#000000', .45), 800);
-    let v = ''; for (let z = 8; z <= 16; z += 2) v += pd([[18, Y1 + .15, z], [36, Y1 + .15, z]], false);
-    s += `<path d="${v}" fill="none" stroke="${INK}" stroke-width="1.3" opacity=".75"/>`; }
-  // top: a service lid and a seam
-  s += ink(pd(on(PZ(ZT + .05), rrUV(13, 50, 35, 73, 2))), 1) + line([[40, 15, ZT + .05], [40, 73, ZT + .05]], .9);
-  if (FRONT) s += ink(pd(on(PX(XF), OUT)), 2.2);
-  if (BACK) s += ink(pd(on(PX(XB), OUT)), 2.2);
-  return s + hullInk([...on(PX(XB), OUT), ...on(PX(XF), OUT)], 2.8);
-}
-
-/* ---------- see-through: the working parts ---------- */
-const T_IDLE = '#e9eef0', T_REAG = '#ff7fb6', T_BUF = '#58b4ff', T_WASTE = '#c9a24a';
-let SEQ_LABELS = '';
-function sqMech(st, k){
-  const sm = sim(st), parts = [], put = (b, svg) => parts.push({ box: b, svg });
-  const bx = (x0, y0, z0, x1, y1, z1, m, w = .8) => put([[x0, y0, z0], [x1, y1, z1]], box(x0, y0, z0, x1, y1, z1, m, toneI, w));
-  const rd = (a, b, r, m, w = .5, r1 = r) => { const R = Math.max(r, r1), bb = bbOf([a, b]); put([bb[0].map(v => v - R), bb[1].map(v => v + R)], rod(a, b, r, m, toneI, w, r1)); };
-  const tube = (pts, col, w = .5) => { for (let i = 0; i < pts.length - 1; i++){ const d = pd([pts[i], pts[i+1]], false), bb = bbOf([pts[i], pts[i+1]]);
-    put([bb[0].map(v => v - .3), bb[1].map(v => v + .3)], `<path d="${d}" fill="none" stroke="${INK}" ${mu(w + .28)} stroke-linecap="round"/><path d="${d}" fill="none" stroke="${col}" ${mu(w)} stroke-linecap="round"/>`); } };
-  const cy = sm.cy, reag = sm.flow ? T_REAG : T_IDLE, thru = sm.flow ? T_REAG : sm.wash ? T_BUF : T_IDLE;
-  // ---- structure
-  bx(10, 12, 2.5, 62, 76, 3.4, STEEL);
-  for (const [x, y] of [[35, 53], [35, 75], [62, 53], [62, 75]]) rd([x, y, 3.4], [x, y, 30], .5, METAL);
-  bx(34, 52, 30, 63, 76, 31, GREY);
-  bx(32, 12, 3.4, 33, 52, 30, GREY);
-  // ---- flow cell stage: heat sink, Peltier, plate, manifold
-  put([[48, 58, 31], [60, 70, 34.2]], box(48, 58, 31, 60, 70, 34.2, METAL, toneI, .7)
-    + [1, 2, 3, 4, 5].map(i => facing([1,0,0]) ? line([[60.03, 58 + i*2, 31.2], [60.03, 58 + i*2, 34]], .5) : facing([-1,0,0]) ? line([[47.97, 58 + i*2, 31.2], [47.97, 58 + i*2, 34]], .5) : '').join(''));
-  bx(49, 59, 34.2, 59, 69, 35, sm.run ? matOf('#ffd9b0') : CERAMIC, .6);
-  bx(46, 56, 35, 62, 72, 37, METAL);
-  bx(53.5, 69.6, 37, 56.7, 72, 38.6, DARK, .6);
-  { const p = fcPos(st.fcT); if (p[0] < XF){ let fc = sqFlowCell(p[0], p[1], p[2], XB, XF, st);
-      if (sm.img) fc += fill(pd(on(PZ(p[2] + .66), ellUV(55.1, cy, 1.25, 1.25, 14))), (st.ph*24 | 0) % 2 ? '#ff6a5a' : '#7dff8a', 'opacity=".75"');
-      put([[Math.max(XB, p[0]), p[1], p[2]], [Math.min(XF, p[0] + 4.2), p[1] + 11, p[2] + .7]], fc); } }
-  // ---- imaging: uprights, rail and screw (in pieces either side of the carriage), carriage, optics, camera, LEDs
-  bx(44, 53, 31, 46, 54.5, 45.5, STEEL); bx(44, 74.5, 31, 46, 76, 45.5, STEEL);
-  bx(44, 54.5, 44, 46, cy - 3, 45.5, METAL, .6); bx(44, cy + 3, 44, 46, 74.5, 45.5, METAL, .6);
-  rd([48.5, 54.5, 44.2], [48.5, cy - 3, 44.2], .35, METAL, .4); rd([48.5, cy + 3, 44.2], [48.5, 74.5, 44.2], .35, METAL, .4);
-  bx(46, 53, 43.2, 49.5, 54.5, 45.2, STEEL, .6);
-  bx(46, 74.5, 42.2, 50.5, 77.3, 46.2, DARK);
-  bx(43.5, cy - 3, 43, 50, cy + 3, 47, GREY);
-  bx(50, cy - 2.5, 41, 58, cy + 2.5, 48, DARK);
-  rd([55.1, cy, 41], [55.1, cy, 38.2], 1.3, METAL, .6, .9);
-  bx(51, cy - 2, 48, 56, cy + 2, 51.5, matOf('#6f7880'));
-  bx(52, cy + 2.5, 43.5, 55, cy + 4, 46.5, matOf(sm.img ? '#7dff8a' : '#3f8f5a'), .6);
-  bx(52, cy - 4, 43.5, 55, cy - 2.5, 46.5, matOf(sm.img ? '#ff6a5a' : '#a23a30'), .6);
-  // ---- reagent chiller: heat sink, Peltier, cold plate, fan; the cartridge; sipper bar and sippers
-  bx(44, 57, 3.4, 62, 71, 6.7, METAL, .7); bx(45, 58, 6.7, 61, 70, 7.5, CERAMIC, .5); bx(43.5, 55, 7.5, 63, 73, 9, COLD);
-  put([[39.5, 58, 3.4], [43, 70, 13]], box(39.5, 58, 3.4, 43, 70, 13, DARK, toneI, .7) + (facing([-1,0,0]) ? shape(on(PX(39.45), ellUV(64, 8.2, 4, 4, 18)), '#6f6a63', .6) + shape(on(PX(39.4), ellUV(64, 8.2, 1.2, 1.2, 10)), DARK.d, .4) : ''));
-  { const p = rcPos(st.rcT); if (p[0] < XF) put([[Math.max(XB, p[0]), p[1], p[2]], [Math.min(XF, p[0] + 18), p[1] + 16, p[2] + 14.1]], sqCart(p[0], p[1], p[2], XB, XF)); }
-  bx(46, 62, 27, 60, 66, 28.5, METAL, .6);
-  rd([48, 64, 28.5], [48, 64, 30], .4, METAL, .4); rd([58, 64, 28.5], [58, 64, 30], .4, METAL, .4);
-  for (const xs of [47.5, 50, 52.5, 55, 57.5]) rd([xs, 64, 27], [xs, 64, 23.2], .25, METAL, .4);
-  // ---- selector valve on its stand
-  bx(35, 62, 3.4, 39, 66, 14, STEEL, .7); bx(34.5, 61.5, 14, 39.5, 66.5, 22, DARK);
-  put([[34.4, 61.4, 22], [39.6, 66.6, 26.6]], cyl(37, 64, 22, 26.5, 2.6, METAL, toneI, .9)
-    + `<path d="${pd([[37, 64, 26.55], [37 + 2.1*Math.cos(sm.va), 64 + 2.1*Math.sin(sm.va), 26.55]], false)}" fill="none" stroke="${sm.flow || sm.wash ? '#e2483d' : INK}" ${mu(.5)} stroke-linecap="round"/>`);
-  // ---- syringe pump on the bulkhead: motor, plunger, glass barrel, head
-  bx(33, 39, 5, 38.5, 45, 12, DARK);
-  { const zp = 25 - 10.5*sm.pl, liq = sm.wash ? T_WASTE : T_REAG;
-    put([[33.8, 40.1, 12], [37.6, 43.9, 26]], rod([35.7, 42, 12], [35.7, 42, zp - .6], .35, METAL, toneI, .4) + cyl(35.7, 42, zp - .7, zp, 1.5, DARK, toneI, .4, 14)
-      + (sm.pl > .03 ? cyl(35.7, 42, zp, 25.6, 1.45, matOf(liq), toneI, .3, 14) : '') + `<g opacity=".5">${cyl(35.7, 42, 13, 26, 1.85, CLEAR, toneI, .8, 16)}</g>`); }
-  bx(33.2, 40, 26, 38.2, 44, 28.5, METAL, .7);
-  // ---- bottles, their sippers and the arm that carries them
-  const bottle = (x, y, level, liq, sipZ) => put([[x - 3.7, y - 3.7, 3.4], [x + 3.7, y + 3.7, 25.5]],
-    (level > .02 ? cyl(x, y, 3.7, 3.7 + 17.6*level, 3.3, matOf(liq), toneI, .4, 20) : '') + rod([x, y, 26.5], [x, y, sipZ], .25, METAL, toneI, .4)
-    + `<g opacity=".5">${cyl(x, y, 3.4, 22, 3.7, CLEAR, toneI, .9, 20)}${cyl(x, y, 22, 24.6, 1.6, CLEAR, toneI, .7, 14)}</g>`);
-  bottle(54, 17, st.buf, '#8cc8ff', 5); bottle(54, 25, st.waste, '#d9b866', 21);
-  put([[33, 15, 26.5], [55, 27, 27.5]], box(33, 20, 26.5, 55, 22, 27.5, METAL, toneI, .6) + box(53, 15, 26.5, 55, 27, 27.5, METAL, toneI, .6));
-  // ---- tubes (each runs on a surface, port to port)
-  tube([[46, 64, 27.7], [40.4, 64, 27.7], [39.6, 64, 25]], reag);                                                          // sipper bar -> valve
-  tube([[54, 17, 27.75], [54, 20.6, 27.75], [33.5, 20.6, 27.75], [32.5, 20.6, 30.3], [32.5, 52, 30.3], [33.6, 52.6, 30.3], [33.6, 64, 30.3], [34.4, 64, 24.5]], sm.wash ? T_BUF : T_IDLE);   // buffer -> valve
-  tube([[37, 64, 26.5], [37, 64, 31.4], [37, 70.3, 31.4], [45.4, 70.3, 31.4], [45.4, 70.3, 37.5], [53.5, 70.3, 37.5]], thru);            // valve -> manifold
-  tube([[53.5, 71.5, 37.7], [44.6, 71.5, 37.7], [44.6, 71.5, 31.4], [35, 71.5, 31.4], [35, 53, 31.4], [33.4, 52.4, 29.3], [33.4, 43, 29.3], [35.7, 43, 28.6]], thru);   // manifold -> pump
-  tube([[35.7, 40, 27.2], [33.4, 39, 27.9], [33.4, 21.5, 27.9], [54, 21.5, 27.75], [54, 25, 27.75]], sm.wash ? T_WASTE : T_IDLE);        // pump -> waste
-  // ---- power and control
-  bx(12, 14, 3.4, 26, 36, 13, matOf('#b8bfc2'));
-  bx(8.8, 18, 5, 10.6, 23, 10, DARK, .6);
-  put([[9.6, 16, 16], [10.4, 72, 46]], shape(on(PX(10), rectUV(16, 16, 72, 46)), PCB.m, .7) + (facing([1,0,0])
-    ? [[22, 22, 28, 27], [38, 31, 45, 38], [53, 23, 57, 27], [62, 36, 67, 41], [24, 38, 28, 41]].map(([a, b, c, d]) => shape(on(PX(10.06), rectUV(a, b, c, d)), '#33302c', .5)).join('') : ''));
-  put([[10.4, 56, 4], [12.6, 70, 14.6]], box(10.4, 56, 4, 12.6, 70, 14.6, DARK, toneI, .7) + (facing([1,0,0]) ? shape(on(PX(12.65), ellUV(63, 9.3, 4.3, 4.3, 18)), '#6f6a63', .6) + shape(on(PX(12.7), ellUV(63, 9.3, 1.3, 1.3, 10)), DARK.d, .4) : ''));
-  bx(60, 32, 31, 62.4, 48, 48, PCB, .7);
-  tube([[61, 40, 48], [61, 40, 52.6], [10.7, 40, 52.6], [10.7, 40, 46]], '#d8cfbd', .7);                                     // ribbon along the roof
-  tube([[10.6, 20.5, 7.5], [12, 20.5, 7.5]], '#e2483d', .4);
-  tube([[14, 30, 13], [10.7, 30, 13.4], [10.7, 30, 16]], '#e2483d', .4);
-  tube([[10.7, 70, 40], [10.7, 77.2, 40], [48.3, 77.2, 40], [48.3, 77.2, 42.2]], '#3a3632', .4);                              // scan motor harness along the side wall
-  tube([[10.7, 46, 16], [10.7, 46, 3.9], [35, 46, 3.9], [35, 45.2, 5.2]], '#4aa3ff', .4);                                     // pump wire along the floor
-  const inC = st.rcT > .99, inF = st.fcT > .99;
-  SEQ_LABELS = k <= .6 ? '' : xrCallouts([
-    ...(inF ? [{ at: [55, 60.5, 37.7], text: 'FLOW CELL', on: sm.run }] : []),
-    { at: [55.1, cy, 39.6], text: 'OBJECTIVE', on: sm.img },
-    { at: [53.5, cy, 51.5], text: 'CAMERA', on: sm.img },
-    { at: [53.5, cy + 4, 45], text: 'LEDS', on: sm.img },
-    { at: [48.5, 77, 45], text: 'SCAN MOTOR', on: sm.img || sm.wash },
-    { at: [59, 60, 34.6], text: 'STAGE HEATER', on: sm.run },
-    { at: [56.5, 71, 38.6], text: 'MANIFOLD', on: sm.flow || sm.wash },
-    { at: [55, 64, 25], text: 'SIPPERS', on: sm.flow },
-    ...(inC ? [{ at: [62, 60, 17], text: 'REAGENT CARTRIDGE', on: sm.flow }] : []),
-    ...(inC ? REAG.filter(r => r.key === reagKey(sm)).map(r => ({ at: wellAt(44, 56, 9.05, r), text: r.name, on: true })) : []),
-    { at: [63, 56, 8.2], text: 'CHILLER', on: inC },
-    { at: [37, 64, 26.5], text: 'SELECTOR VALVE', on: sm.flow || sm.wash },
-    { at: [35.7, 40.2, 19], text: 'SYRINGE PUMP', on: sm.flow || sm.wash },
-    { at: [54, 13.3, 12], text: 'WASH BUFFER PR2', on: sm.wash },
-    { at: [57.7, 25, 8], text: 'WASTE BOTTLE', on: sm.wash },
-    { at: [10, 30, 44], text: 'MAIN BOARD', on: sm.run },
-    { at: [19, 14, 10], text: 'POWER SUPPLY', on: false },
-    { at: [61, 32, 46], text: 'COMPUTER', on: sm.run } ], [XB, XF + 6, Y0, Y1, ZB, ZT]);
-  return sqSort(parts);
+/* ---------- the DNA ---------- */
+let LP_LABELS = [];
+function patch(st, m){
+  const u = st.anim ? st.u : 1, fI = st.anim ? c01((u - .25)/.5) : 1, L = LP_LABELS, n = st.step, lab = (at, text, on = false) => L.push({ at, text, on });
+  let s = box(8, 14, 2, 112, 136, SZ, GLASS, toneI, 1.4);
+  s += flat(XR[0] + 6.5, YC, 'ROUTE 1: INDEX IN THE ADAPTER, NO PCR', 3.2) + flat(XR[1] + 6.5, YC, 'ROUTE 2: INDEX ADDED BY PCR', 3.2);
+  if (n >= 6) s += `<g opacity="${f(fI)}">` + flat(XR[2] + 6.5, YC, 'LIBRARY 2: OTHER INDEXES', 3.2) + flat(XR[3] + 6, YC, 'PHIX CONTROL', 3.2) + '</g>';
+  const items = [], put = (at, svg) => items.push({ at, svg });
+  const cur = stageMols(n), prev = st.anim && n > 0 ? stageMols(n - 1) : [];
+  if (fI < 1) for (const q of prev){ const o = q.junk ? [10*fI, 0, 16*fI] : [0, 0, 0]; put([q.x, q.yc, q.z], `<g opacity="${f(1 - fI)}">${drawMol({ ...q, from: null, x: q.x + o[0], z: q.z + o[2] }, 1)}</g>`);
+    if (q.junk && q.name && n === 4) lab([q.x + o[0], q.yc, q.z + o[2]], 'WASHED AWAY', true); }
+  for (const q of cur){ put([q.x, q.yc, q.z + .1], `<g opacity="${f(fI)}">${drawMol(q, fI)}</g>`); if (q.junk && q.name && fI > .5) lab([q.x, q.yc, q.z], q.name, st.anim); }
+  const sp7 = n === 7 ? 6*fI : 0, at = (k, top = true, r = 0, dz = 0) => [XR[r] + (top ? -1 : 1)*(DUP + sp7), YC + (k - 9.5)*DY, ZM + dz + (top ? .4 : -.2)*sp7], on = !!st.anim;
+  if (st.anim && n === 1 && u > .3 && u < .7) for (let r = 0; r < 2; r++) for (const k of [-2, 21]) put(at(k, true, r, 3), note([XR[r], YC + (k - 9.5)*DY, ZM + 3.5], 'CUT', '#e2483d', 3));
+  if (st.anim && n === 5 && u > .25 && u < .75){ const k = 28 - 38*c01((u - .25)/.5), c = [XR[1], YC + (k - 9.5)*DY, ZM + .3], R = 5, pts = [];   // the polymerase of the PCR, on route 2
+    for (let i = 0; i <= 20; i++){ const t = (48 + 264*i/20)*Math.PI/180; pts.push(P(...[0, 1, 2].map(j => c[j] + CAM_R[j]*R*.6*Math.sin(t) + CAM_U[j]*R*.6*Math.cos(t)))); }
+    const d = 'M' + pts.map(q => f(q[0]) + ' ' + f(q[1])).join('L');
+    put(add(c, [-3, -3, -2]), `<g opacity=".8"><path d="${d}" fill="none" stroke="${INK}" style="stroke-width:${(R*.62*KQ).toFixed(2)}" stroke-linecap="round"/><path d="${d}" fill="none" stroke="${m.m}" style="stroke-width:${(R*.54*KQ).toFixed(2)}" stroke-linecap="round"/></g>`);
+    lab(c, 'POLYMERASE COPYING', true); lab(at(-8.5, true, 1), 'PRIMER: i5 + P5', true); lab(at(26, true, 1), 'PRIMER: i7 + P7', true); }
+  // names
+  if (n === 0) lab(at(6), 'EXTRACTED DNA', false);
+  if (n === 1){ lab(at(9), 'FRAGMENT', on); lab(at(-1), 'RAGGED END', on); }
+  if (n === 2){ lab(at(-.55), '5 PHOSPHATE', on); lab(at(20), 'A OVERHANG', on); lab(at(9), 'INSERT', false); }
+  if (n >= 3){ const o3 = on && n === 3;   // route 1 keeps its forked, fully indexed adapters to the end
+    lab(add(at(-9), [-3.4, 0, 2.7]), 'P5', o3); lab(add(at(-5.5), [-2, 0, 1.6]), 'i5 INDEX', o3); lab(at(-3), 'READ 1 PRIMER SITE', false); lab(at(9), 'INSERT', false);
+    lab(at(22), 'READ 2 PRIMER SITE', false); lab(add(at(24.5), [-2, 0, 1.6]), 'i7 INDEX', o3); lab(add(at(28), [-3.4, 0, 2.7]), 'P7', o3);
+    if (n < 7){ lab(at(20, false), 'T PAIRS WITH A', o3); lab(add(at(27, false), [3.4, 0, .7]), 'FORKED END', false); } }
+  if (n === 3 || n === 4) lab(add(at(25, true, 1), [-2.3, 0, 1.8]), 'SHORT ADAPTER', on && n === 3);
+  if (n === 5 && !st.anim){ lab(at(-5.5, true, 1), 'i5 ADDED', false); lab(at(24.5, true, 1), 'i7 ADDED', false); lab([XR[1] - DUP, YC, ZM + 11], 'PCR COPY', false); lab(at(14, false, 0), 'UNCHANGED', false); }
+  if (n === 7){ lab(at(14, true, 1), 'TOP STRAND', on); lab(at(14, false, 1), 'BOTTOM STRAND', on); }
+  return s + byDepth(items);
 }
 
 /* ---------- scene ---------- */
 function scene(st, m){
-  const FRONT = facing([1,0,0]), k = ease(st.xr || 0), btop = boardTop(0, 0, BX, BY, 2, 5);
-  const fp = fcPos(st.fcT), cp = rcPos(st.rcT);
-  const corners = (a, b) => { const o = []; for (const x of [a[0], b[0]]) for (const y of [a[1], b[1]]) for (const z of [a[2], b[2]]) o.push([x, y, z]); return o; };
+  const btop = boardTop(0, 0, BX, BY, 2, 5), cs = (a, b) => { const o = []; for (const x of [a[0], b[0]]) for (const y of [a[1], b[1]]) for (const z of [a[2], b[2]]) o.push([x, y, z]); return o; };
+  LP_LABELS = [];
   let s = board(0, 0, BX, BY, 2, 5);
-  s += castShadow([...on(PX(XB), OUT), ...on(PX(XF), OUT)], 2, btop);
-  if (st.rcT < .3) s += castShadow(corners(cp, [cp[0] + 18, cp[1] + 16, cp[2] + 14]), 2, btop);
-  if (st.fcT < .05) s += castShadow(corners(fp, [fp[0] + 4.2, fp[1] + 11, fp[2] + .6]), 2, btop);
-  let body = sqBody(st, m, k);
-  if (k > 0) body = xrGhost(body, '', k, OUT, XB, XF, m) + `<g opacity="${f(k)}">${sqMech(st, k)}</g>`;
-  const fade = svg => k > 0 ? `<g opacity="${f(1 - .8*k)}">${svg}</g>` : svg;
-  const items = [{ box: [[XB, Y0, ZB], [XF, Y1, ZT]], svg: body }];
-  // the two hinged doors
-  { const pr = fcDoorProf(st.fcDoor), closed = st.fcDoor < .02 && FRONT;
-    let d = sqPrismY(pr, 54, 74, DOORM, 1.1);
-    if (closed) d += shape(on(PX(XF + 1.05), rrUV(61, 35.6, 67, 36.7, .5)), RECESS, .5) + tx(XF + 1.06, 64, 41, 'FLOW CELL', 1.5, '#857d6e', 700);
-    items.push({ box: bbOf([...pr.map(([x, z]) => [Math.max(x, XF + .01), 54, z]), ...pr.map(([x, z]) => [Math.max(x, XF + .01), 74, z])]), svg: act('fcdoor', fade(d)) }); }
-  { const pr = rcDoorProf(st.rcDoor), closed = st.rcDoor < .02 && FRONT;
-    let d = sqPrismY(pr, 54, 74, DOORM, 1.1);
-    if (closed) d += shape(on(PX(XF + 1.05), rrUV(61, 25.4, 67, 26.5, .5)), RECESS, .5) + tx(XF + 1.06, 64, 16.4, 'REAGENTS', 1.5, '#857d6e', 700) + tx(XF + 1.06, 64, 13.6, '4 C', 1.2, '#857d6e', 700);
-    items.push({ box: bbOf([...pr.map(([x, z]) => [Math.max(x, XF + .01), 54, z]), ...pr.map(([x, z]) => [Math.max(x, XF + .01), 74, z])]), svg: act('rcdoor', fade(d)) }); }
-  // the consumables, as far as they are outside the machine
-  if (fp[0] + 4.2 > XF + .05) items.push({ box: [[Math.max(XF, fp[0]), fp[1], fp[2]], [fp[0] + 4.2, fp[1] + 11, fp[2] + .7]], svg: act('fc', sqFlowCell(fp[0], fp[1], fp[2], XF, 1e9, st)) });
-  if (cp[0] + 18 > XF + .05) items.push({ box: [[Math.max(XF, cp[0]), cp[1], cp[2]], [cp[0] + 18, cp[1] + 16, cp[2] + 14.1]], svg: act('rc', sqCart(cp[0], cp[1], cp[2], XF, 1e9)) });
-  // mains cord: out of the back, down to the bench and off its far edge
-  { const pts = [[XB - 2.4, 20.5, 7.5], [XB - 4.2, 20.5, 5.6], [XB - 5, 20, 2.9], [XB - 6, 15, 2.5], [1.2, 8, 2.5]], cd = pd(pts, false);
-    items.push({ box: [[0, 6, 2], [XB - .01, 23, 9.5]], svg: cylX(XB - 2.6, XB, 20.5, 7.5, 1.5, DARK, toneI, .8, 14)
-      + `<path d="${cd}" fill="none" stroke="${INK}" ${mu(1.5)} stroke-linecap="round" stroke-linejoin="round"/><path d="${cd}" fill="none" stroke="${DARK.m}" ${mu(.95)} stroke-linecap="round" stroke-linejoin="round"/>` }); }
-  s += sqSort(items);
-  // labels
-  if (k > .6) s += SEQ_LABELS;
-  else { const sm = sim(st);
-    s += xrCallouts([
-      ...(FRONT ? [{ at: [XF + 1, 62, 45], text: 'FLOW CELL DOOR', on: st.fcDoor > .05 }, { at: [XF + .4, 31, 45], text: 'TOUCH SCREEN', on: sm.run },
-        { at: [XF + 1, 62, 22], text: 'REAGENT CHILLER', on: st.rcDoor > .05 }, { at: [XF + .3, 15, 28], text: 'BOTTLE DOOR', on: false }] : []),
-      ...(st.fcT < .05 ? [{ at: [fp[0] + 2.1, fp[1] + 2, fp[2] + .7], text: 'FLOW CELL', on: false }] : []),
-      ...(st.rcT < .05 ? [{ at: [cp[0] + 18, cp[1] + 14, cp[2] + 4], text: 'REAGENT CARTRIDGE', on: false }] : []),
-      ...(cp[0] + 18 > XF + .05 ? REAG.map(r => ({ at: wellAt(cp[0], cp[1], cp[2], r), text: r.name, on: false })).filter(o => o.at[0] > XF + 1.6) : []) ], [XB, XF + 6, Y0, Y1, ZB, ZT]); }
-  return s;
+  s += castShadow(cs([8, 14, 2], [112, 136, SZ]), 2, btop) + castShadow(cs([CXQ, 52, 2], [CXQ + 1.2, 98, 27]), 2, btop);
+  s += byDepth([{ box: [[8, 14, 2], [118, 136, 50]], svg: patch(st, m) }, { box: [[CXQ, 52, 2], [CXQ + 1.3, 98, 27]], svg: qcCard(st) }]);
+  if (facing([1,0,0])) LP_LABELS.push({ at: [CXQ + 1.3, 54, 25], text: 'QC RESULT', on: st.step === 6 && st.anim });
+  return s + xrCallouts(LP_LABELS, [0, 92, 40, 600, 0, 36]);
 }
 
 /* ---------- behaviour ---------- */
 let ui;
-function chain(steps, done){ const st = ui.st; let i = 0, t = 0; st.busy = true;
-  ui.animate(dt => { const stp = steps[i]; t += dt; const u = Math.min(1, t / stp[0]); stp[1](ease(u));
-    if (u >= 1){ i++; t = 0; if (i >= steps.length){ st.busy = false; if (done) done(); return false; } } return true; }); }
-const FC_IN  = st => [[.45, u => st.fcDoor = u], [.9, u => st.fcT = .6*u], [.55, u => st.fcT = .6 + .4*u], [.45, u => st.fcDoor = 1 - u]];
-const FC_OUT = st => [[.45, u => st.fcDoor = u], [.55, u => st.fcT = 1 - .4*u], [.9, u => st.fcT = .6*(1 - u)], [.45, u => st.fcDoor = 1 - u]];
-const RC_IN  = st => [[.45, u => st.rcDoor = u], [.5, u => st.rcT = .3*u], [.6, u => st.rcT = .3 + .35*u], [.6, u => st.rcT = .65 + .35*u], [.45, u => st.rcDoor = 1 - u]];
-const RC_OUT = st => [[.45, u => st.rcDoor = u], [.6, u => st.rcT = 1 - .35*u], [.6, u => st.rcT = .65 - .35*u], [.5, u => st.rcT = .3*(1 - u)], [.45, u => st.rcDoor = 1 - u]];
-const blocked = st => st.busy ? (ui.flash('One moment'), true) : ACTIVE(st) ? (ui.flash('Run in progress'), true) : false;
-function loadFC(st){ if (blocked(st)) return; if (st.fc) return ui.flash('Flow cell is already loaded');
-  if (st.run === 'done') return ui.flash('Unload the finished run first');
-  chain(FC_IN(st), () => { st.fc = 1; }); }
-function loadRC(st){ if (blocked(st)) return; if (st.rc) return ui.flash('Reagents are already loaded');
-  if (st.run === 'done') return ui.flash('Unload the finished run first');
-  chain(RC_IN(st), () => { st.rc = 1; }); }
-function startRun(st){ if (blocked(st)) return;
-  if (st.run === 'done') return ui.flash('This flow cell is used: unload it');
-  if (!st.fc) return ui.flash('Load a flow cell first');
-  if (!st.rc) return ui.flash('Load the reagent cartridge first');
-  st.run = 'clu'; st.cyc = 0; st.ph = 0; ui.flash('Cluster generation: bridge amplification copies each strand about 1000 times', 2800);
-  ui.animate(dt => {
-    if (st.run === 'clu'){ st.ph += dt / 3.2; if (st.ph >= 1){ st.run = 'run'; st.ph = 0; } return true; }           // clusters first
-    if (st.run === 'turn'){ st.ph += dt / 2.8; if (st.ph >= 1){ st.run = 'run'; st.ph = 0; } return true; }          // second bridge amplification, then read 2
-    st.ph += dt / CYC;
-    if (st.ph >= .8){ st.waste = Math.min(.95, st.waste + dt*.09); st.buf = Math.max(.1, st.buf - dt*.05); }
-    if (st.ph >= 1){ st.ph = 0; st.cyc++; if (st.cyc >= NCYC){ st.run = 'done'; ui.flash('Run complete', 2200); return false; }
-      if (st.cyc % 4 === 3) ui.flash('Cycles 4 to 149 are not shown', 1500);
-      if (st.cyc === 4){ st.run = 'turn'; ui.flash('Read 1 done: strands bridge again to rebuild the reverse strands', 2800); } }
-    return true; }); }
-function unload(st){ if (blocked(st)) return; if (!st.fc && !st.rc) return ui.flash('Nothing to unload');
-  const steps = [...(st.fc ? FC_OUT(st) : []), ...(st.rc ? RC_OUT(st) : [])];
-  chain(steps, () => { st.fc = st.rc = 0; st.run = 'idle'; st.cyc = 0; st.ph = 0; }); }
-
+function doStep(st, n){
+  if (st.anim) return ui.flash('One moment');
+  if (st.step >= n) return ui.flash(STEPS[n].name + ' is already done');
+  if (st.step < n - 1) return ui.flash('First: ' + STEPS[st.step + 1].name);
+  st.step = n; st.anim = true; st.u = 0; ui.flash(STEPS[n].note, 3800);
+  const secs = n === 5 ? 4.5 : 3.2;
+  ui.animate(dt => { st.u = Math.min(1, st.u + dt/secs); if (st.u >= 1){ st.anim = false; return false; } return true; });
+}
 ui = mountFigure({
-  fig:'12', turn:'full', title:'Benchtop sequencer and flow cell',
-  size:[BX, BY, ZT + 2], center:[BX/2 - 6, BY/2], palette:'cobalt',
-  state:{ fc:0, rc:0, fcT:0, rcT:0, fcDoor:0, rcDoor:0, busy:false, run:'idle', cyc:0, ph:0, waste:.12, buf:.9 },
+  fig:'11', turn:'full', title:'Library prep',
+  size:[BX, BY, 44], palette:'mint',
+  state:{ step:0, anim:false, u:0 },
   scene,
   buttons:[
-    { label:'Load flow cell', onClick: st => loadFC(st) },
-    { label:'Load reagents', onClick: st => loadRC(st) },
-    { label:'Start run', onClick: st => startRun(st) },
-    { label:'Unload', onClick: st => unload(st) },
-    { label:'Library prep', onClick: () => { location.href = 'library-prep.html'; } },
+    ...[1, 2, 3, 4, 5, 6, 7].map(n => ({ label: STEPS[n].name, onClick: st => doStep(st, n) })),
+    { label:'Reset', onClick: st => { if (st.anim) return ui.flash('One moment'); st.step = 0; st.u = 0; } },
     { label:'Flow cell close-up', onClick: () => { location.href = 'flowcell-closeup.html'; } },
+    { label:'Sequencer', onClick: () => { location.href = 'sequencer-flowcell.html'; } },
   ],
-  stats: st => { const sm = sim(st); return [
-    { label: st.run === 'run' || st.run === 'turn' ? `Read ${st.cyc < 4 || st.run === 'turn' ? 1 : 2} cycle` : st.run === 'done' ? 'Read 2 cycle' : 'Cycle', value: `${cycNo(st)}/${RLEN}` },
-    { label:'Read', value: readOf(sm.called) || '-', small:true } ]; },
-  acts:{ fc: st => loadFC(st), fcdoor: st => st.fc ? unload(st) : loadFC(st), rc: st => loadRC(st), rcdoor: st => st.rc ? unload(st) : loadRC(st), screen: st => startRun(st) },
-  params:(st, q) => {
-    if (q.get('fc') === '1'){ st.fc = 1; st.fcT = 1; } if (q.get('rc') === '1'){ st.rc = 1; st.rcT = 1; }
-    for (const key of ['fcT', 'rcT', 'fcDoor', 'rcDoor', 'cyc', 'ph', 'waste']) if (q.has(key)) st[key] = +q.get(key);
-    if (q.has('run')) st.run = q.get('run');
-  },
+  stats: st => [ { label:'Step', value: `${st.step}/7` } ],
+  params:(st, q) => { if (q.has('step')) st.step = +q.get('step'); if (q.has('u')){ st.u = +q.get('u'); st.anim = true; } },
 });
-addEventListener('keydown', e => { if (/input|textarea|button/i.test(e.target.tagName)) return;
-  if (e.key === ' ' || e.key === 'Enter'){ startRun(ui.st); e.preventDefault(); ui.render(); } });
-xrMount(() => ui, () => '');
+xrMount(() => ui, () => '', { labelsOnly:true });
 </script><style>@media (max-width:560px),(pointer:coarse){#art{filter:none!important}.ctl:has(#wb){display:none!important}}</style><style>@media (max-width:560px){html body .kpad{width:100%;box-sizing:border-box;justify-content:space-between;gap:10px;margin:10px 0 0;padding:0;border:0;background:none;box-shadow:none}
 html body .kpad .dp{display:flex;gap:8px}html body .kpad .hub{display:none}
 html body .kpad .k{width:46px;height:42px;font-size:14px;border-radius:9px}
