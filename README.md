@@ -1,6 +1,6 @@
 # Tissue to Farm
 
-Hand-drawn, interactive figures that follow a sample from DNA to the FASTQ files that land on the cluster, one page per step. Two short-read chemistries are covered: **Illumina** (bridge amplification, sequencing by synthesis) and **Element AVITI** (rolling circle amplification, sequencing by avidity).
+Not farm to table: tissue to **Farm**, the UC Davis compute cluster. My personal study notes, drawn as hand-drawn interactive figures that follow a sample from DNA to the FASTQ files that land on the cluster, one page per step. This is a learning project, not teaching material and not manufacturer documentation; corrections are welcome. Two short-read chemistries are covered: **Illumina** (bridge amplification, sequencing by synthesis) and **Element AVITI** (rolling circle amplification, sequencing by avidity).
 
 Live site: https://w1shyoubest.github.io/second-generation-sequencing/
 
@@ -26,11 +26,11 @@ Open any page in a browser; keep the files in one folder so the buttons that lin
 - **Reading and stepping can be separate steps.** In Illumina the labelled nucleotide that is read is also the one incorporated. In AVITI an avidite is read and then washed off, and a plain nucleotide does the stepping, which lets each step be optimised on its own and is the main reason for its lower error rate.
 - **Indexes and paired ends.** Barcodes in the adapters tell pooled libraries apart; reading the fragment from both ends gives paired reads.
 
-## Verification & Inference 
+## What is verified, what is inferred
 
 These are study sketches, not manufacturer documentation. Strand lengths are shortened, only a few cycles and amplification rounds are played, and both instruments are drawn smaller and simpler than life.
 
-**AVITI, from Arslan et al., *Sequencing by avidity enables high accuracy with low reagent consumption*, Nat Biotechnol 2024 (doi 10.1038/s41587-023-01750-7):** libraries circularized before loading (Adept kit), denatured, loaded at 8 pM and hybridized to the flow cell; rolling circle amplification on the instrument giving about 1 billion polonies per flow cell; avidites built on a dye-labelled streptavidin core with about three nucleotide arms; an engineered polymerase for binding and a separate one for the unlabelled, blocked stepping nucleotide; four colours; 96.2% of bases above Q30 and 85.4% above Q40; reads of 2 x 150 and 1 x 300; two flow cells served by two fluidics modules and one shared imaging module.
+**AVITI, from Arslan et al., *Sequencing by avidity enables high accuracy with low reagent consumption*, Nat Biotechnol 42, 132–138 (2024; online May 2023), doi 10.1038/s41587-023-01750-7:** libraries circularized before loading (Adept kit), denatured, loaded at 8 pM and hybridized to the flow cell; rolling circle amplification on the instrument giving about 1 billion polonies per flow cell; avidites built on a dye-labelled streptavidin core with about three nucleotide arms; an engineered polymerase for binding and a separate one for the unlabelled, blocked stepping nucleotide; four colours; 96.2% of bases above Q30 and 85.4% above Q40; reads of 2 x 150 and 1 x 300; two flow cells served by two fluidics modules and one shared imaging module.
 
 **AVITI, from Element's specification sheet and product pages:** dual flow cells controlled independently ("like having two sequencers in one"); each flow cell a two-lane glass substrate in a plastic cartridge; kits from 2 x 75 to 2 x 300; at least 1 billion read pairs per flow cell; 2 x 150 high output in about 38 hours; instrument 29.5 x 37.6 x 28.5 in (H x W x D), 155 kg. Circularization can be done in a tube (Adept and Elevate kits) or on the flow cell with Cloudbreak Freestyle chemistry, which also takes Illumina TruSeq and Nextera adapter libraries directly.
 

@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Benchtop sequencer and flow cell</title><style>.controls .ctl:nth-child(1),.controls .ctl:nth-child(2){display:none!important}</style></head><body>
+<title>Illumina-style benchtop sequencer</title><style>.controls .ctl:nth-child(1),.controls .ctl:nth-child(2){display:none!important}</style></head><body>
 <script src="core.js"></script>
 <script>
 /* Benchtop sequencing-by-synthesis instrument (in the style of a small Illumina benchtop sequencer) with its flow cell
@@ -404,7 +404,7 @@ function unload(st){ if (blocked(st)) return; if (!st.fc && !st.rc) return ui.fl
   chain(steps, () => { st.fc = st.rc = 0; st.run = 'idle'; st.cyc = 0; st.ph = 0; }); }
 
 ui = mountFigure({
-  fig:'12', turn:'full', title:'Benchtop sequencer and flow cell',
+  fig:'12', turn:'full', title:'Illumina-style benchtop sequencer',
   size:[BX, BY, ZT + 2], center:[BX/2 - 6, BY/2], palette:'cobalt',
   state:{ fc:0, rc:0, fcT:0, rcT:0, fcDoor:0, rcDoor:0, busy:false, run:'idle', cyc:0, ph:0, waste:.12, buf:.9 },
   scene,
