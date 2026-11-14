@@ -743,9 +743,9 @@ const doorProf = a => { const t = a*88*Math.PI/180, c = Math.cos(t), s = Math.si
 
 /* ---------- screen: both sides ---------- */
 function sqScreen(st){
-  const x = XF + .42, T = (y, z, str, size, col = GRN) => tx(x, y, z, str, size, col, 700); let s = T(45, 51.6, 'AVI-TWO . 2 SIDES . 300 CYCLES EACH', 1.3, '#5fae82');
+  const x = XF + .42, T = (y, z, str, size, col = GRN) => tx(x, y, z, str, size, col, 700); let s = T(45, 51.6, 'AVI-TWO . 2 SIDES . 2 X 150 = 300 CYCLES EACH', 1.25, '#5fae82');
   KEYS.forEach((k, i) => { const S = st[k], yb = i === 0 ? 55 : 35, ph = phaseOf(S);
-    const line1 = S.run === 'idle' ? (!S.fc ? 'LOAD FLOW CELL' : !S.rc ? 'LOAD REAGENTS' : 'READY') : S.run === 'done' ? 'RUN COMPLETE' : S.run === 'hyb' ? 'HYBRIDIZE CIRCLES' : S.run === 'rca' ? 'POLONY GENERATION' : S.run === 'turn' ? 'PAIRED-END TURN' : `CYCLE ${cycNo(S)}/${RLEN}`;
+    const line1 = S.run === 'idle' ? (!S.fc ? 'LOAD FLOW CELL' : !S.rc ? 'LOAD REAGENTS' : 'READY') : S.run === 'done' ? 'RUN COMPLETE' : S.run === 'hyb' ? 'HYBRIDIZE CIRCLES' : S.run === 'rca' ? 'POLONY GENERATION' : S.run === 'turn' ? 'PAIRED-END TURN' : `CYCLE ${cycNo(S)}/${RLEN} . R${S.cyc < 4 ? 1 : 2} ${cycNo(S) - (S.cyc < 4 ? 0 : 150)}/150`;
     const line2 = S.run === 'run' ? (S.wait ? 'WAITING FOR CAMERA' : ph === 'bind' ? 'BIND AVIDITES' : ph === 'img' ? 'IMAGE 4 CHANNELS' : ph === 'wash' ? 'WASH AVIDITES OFF' : 'STEP + UNBLOCK') : S.run === 'rca' ? 'ROLLING CIRCLE AMP.' : S.run === 'done' ? '2 X 150, 8 CYCLES SHOWN' : S.run === 'hyb' ? 'CIRCLES ONTO PRIMERS' : S.run === 'turn' ? 'READ 2 NEXT' : S.fc && S.rc ? 'PRESS START' : '';
     s += T(yb, 48.4, 'SIDE ' + k, 1.3, '#f4c430') + T(yb, 45.6, line1, 1.45) + T(yb, 43.3, line2, 1.1, S.wait ? '#f4c430' : '#5fae82');
     // the side's lane picture: 8 polony dots, lit in the colour of the base just read
@@ -932,10 +932,11 @@ ui = mountFigure({
       { label:'Load flow cell', current: !!S.fc, onClick: st => loadFC(st[k]) }, { label:'Load reagents', current: !!S.rc, onClick: st => loadRC(st[k]) },
       { label:'Start run', disabled: !S.fc || !S.rc || ACTIVE(S), why: ACTIVE(S) ? 'Side ' + k + ' is running' : 'Load flow cell and reagents first', onClick: st => startRun(st[k]) },
       { label:'Unload', disabled: !S.fc && !S.rc, why: 'Nothing loaded', onClick: st => unload(st[k]) } ]; } })),
+    { label:'Illumina sequencer', onClick: () => { location.href = 'sequencer-flowcell.html'; } },
     { label:'AVITI flow cell', onClick: () => { location.href = 'aviti-sequencing.html'; } },
     { label:'Library prep', onClick: () => { location.href = 'library-prep.html'; } },
     { label:'Cover', onClick: () => { location.href = 'index.html'; } } ],
-  stats: st => KEYS.map(k => ({ label:'Side ' + k + (st[k].run === 'run' ? (st[k].cyc < 4 ? ' read 1' : ' read 2') : ''), value: `${cycNo(st[k])}/${RLEN}`, small: true })),
+  stats: st => KEYS.map(k => ({ label:'Side ' + k + (st[k].run === 'run' ? (st[k].cyc < 4 ? ' . read 1' : ' . read 2') : '') + ' . cycle', value: `${cycNo(st[k])}/${RLEN}`, small: true })),
   acts:{ fcA: st => loadFC(st.A), fcB: st => loadFC(st.B), rcA: st => loadRC(st.A), rcB: st => loadRC(st.B), doorA: st => st.A.fc ? unload(st.A) : loadFC(st.A), doorB: st => st.B.fc ? unload(st.B) : loadFC(st.B), screen: st => { startRun(st.A); } },
   params:(st, q) => { for (const k of KEYS){ const S = st[k]; if (q.get('fc' + k) === '1'){ S.fc = 1; S.fcT = 1; } if (q.get('rc' + k) === '1'){ S.rc = 1; S.rcT = 1; }
       for (const key of ['fcT', 'rcT', 'door', 'cyc', 'ph']) if (q.has(key + k)) S[key] = +q.get(key + k); if (q.has('run' + k)) S.run = q.get('run' + k); }
