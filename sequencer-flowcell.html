@@ -1056,8 +1056,9 @@ ui = mountFigure({
     { label:'Load reagents', onClick: st => loadRC(st) },
     { label:'Start run', onClick: st => startRun(st) },
     { label:'Unload', onClick: st => unload(st) },
+    { label:'Illumina flow cell', onClick: () => { location.href = 'flowcell-closeup.html'; } },
     { label:'Library prep', onClick: () => { location.href = 'library-prep.html'; } },
-    { label:'Flow cell close-up', onClick: () => { location.href = 'flowcell-closeup.html'; } },
+    { label:'Cover', onClick: () => { location.href = 'index.html'; } },
   ],
   stats: st => { const sm = sim(st); return [
     { label: st.run === 'run' || st.run === 'turn' ? `Read ${st.cyc < 4 || st.run === 'turn' ? 1 : 2} cycle` : st.run === 'done' ? 'Read 2 cycle' : 'Cycle', value: `${cycNo(st)}/${RLEN}` },

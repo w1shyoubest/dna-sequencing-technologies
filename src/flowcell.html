@@ -416,9 +416,10 @@ ui = mountFigure({
     { label:'Sequence', onClick: st => sequence(st) },
     { label:'Turn around', onClick: st => turnAround(st) },
     { label:'Reset', onClick: st => resetAll(st) },
+    { label:'Next: Illumina sequencer', onClick: () => { location.href = 'sequencer-flowcell.html'; } },
     { label:'AVITI flow cell', onClick: () => { location.href = 'aviti-sequencing.html'; } },
     { label:'Library prep', onClick: () => { location.href = 'library-prep.html'; } },
-    { label:'Back to sequencer', onClick: () => { location.href = 'sequencer-flowcell.html'; } },
+    { label:'Cover', onClick: () => { location.href = 'index.html'; } },
   ],
   stats: st => [
     { label:`Read ${st.read} cycle`, value: `${st.seq < 1 ? 0 : cycNo(st.seq)}/${RLEN}` },

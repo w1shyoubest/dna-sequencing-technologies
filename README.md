@@ -8,10 +8,12 @@ Open any page in a browser; keep the files in one folder so the buttons that lin
 
 | Page | What it shows |
 |---|---|
-| `library-prep.html` (also `index.html`) | How DNA becomes a library: fragment, end repair + A-tail, adapter ligation, clean-up, QC + pooling, denaturing. Two indexing routes side by side: index in the adapter (PCR-free) and index added by PCR. |
+| `index.html` | The cover: a map of the project. Second generation (short reads) runs from library prep through either chemistry to its sequencer; third generation (long reads) is marked as in preparation. |
+| `library-prep.html` | How DNA becomes a library: fragment, end repair + A-tail, adapter ligation, clean-up, QC + pooling, denaturing. Two indexing routes side by side: index in the adapter (PCR-free) and index added by PCR. |
 | `flowcell-closeup.html` | Illumina: an 8-lane flow cell and a patch of its surface at molecular scale. Hybridization to the P5/P7 lawn, first extension, bridge amplification into clusters, sequencing by synthesis with labelled blocked nucleotides, index reads, paired-end turnaround, and the files that come out. |
 | `aviti-sequencing.html` | AVITI: a library circle lands on a surface primer, rolling circle amplification builds a polony (one long strand of tandem copies), then sequencing by avidity: an avidite binds many copies at once, is imaged in four channels, washed off, and an unlabelled blocked nucleotide steps the strand on by one. The signal path from camera image to base call is shown, with a card comparing the two chemistries. |
 | `sequencer-flowcell.html` | A benchtop Illumina-style sequencer you can load and run, with a see-through view of the fluidics and optics. |
+| `aviti-sequencer.html` | The AVITI-style instrument: same mechanical layout, with the AVITI run program (circles hybridize, rolling circle amplification, avidity cycles), its reagents and a 2-lane flow cell. The real instrument has two flow cell sides sharing one imaging module; one side is modelled. |
 
 Drag to turn a figure, use the buttons in order, and switch on **Labels** (and **See-through** on the sequencer) to name the parts.
 
