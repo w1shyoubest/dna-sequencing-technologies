@@ -16,7 +16,9 @@
 
    HOW IT REALLY WORKS
    1. CIRCULARIZE: the single-stranded library's two ends are brought together on a splint oligo and joined by a
-      ligase: a closed single-stranded circle.
+      ligase: a closed single-stranded circle. In the 2023 paper this is done in a tube (Adept kit). Element's later
+      Cloudbreak Freestyle chemistry loads the LINEAR library and circularizes it on the flow cell (TruSeq and Nextera
+      adapter libraries included), so no conversion step is needed; the surface chemistry of that step is not published.
    2. HYBRIDIZE: the circle pairs with a primer fixed on the flow cell surface.
    3. ROLLING CIRCLE AMPLIFICATION: a strand-displacing polymerase extends that primer round and round the circle.
       Each lap pushes the previous lap off, so one long single strand grows: tandem copies of the circle's complement,
@@ -110,7 +112,7 @@ function flowCell(st){
   if (im) s += fill(pd(R(lane(0), 40.5, lane(0) + LW, 45, .035)), '#ffffff', 'opacity=".45"') + ink(pd(R(lane(0), 40.5, lane(0) + LW, 45, .035)), .9);
   s += ink(pd(on(PZ(zt + .04), rectUV(sx - 1, sy - 1, sx + 1, sy + 1))), 1.1);
   s += `<path d="${pd([[sx + 1, sy - 1, zt], [52, 16, SZ]], false)}${pd([[sx + 1, sy + 1, zt], [52, 114, SZ]], false)}" fill="none" stroke="${INK}" stroke-width="1" stroke-dasharray="${f(3*INK_K)} ${f(3*INK_K)}" opacity=".7"/>`;
-  AV_LABELS.push({ at: [x0 + lane(1) + LW/2, y0 + 50, zt], text: 'FLOW CELL: 2 LANES', on: false }, { at: [x0 + lane(1) + LW, y0 + 49.5, zt], text: 'IMAGING TILE', on: im },
+  AV_LABELS.push({ at: [x0 + lane(1) + LW/2, y0 + 50, zt], text: 'FLOW CELL: 2 LANES (ELEMENT SPEC)', on: false }, { at: [x0 + lane(1) + LW, y0 + 49.5, zt], text: 'IMAGING TILE', on: im },
     ...(st.stage < 3 ? [{ at: [x0 + lane(1) + LW/2, y0 + 63, zt], text: 'INLET', on: wet }, { at: [x0 + 28.8, y0 + 44, zt], text: 'BARCODE', on: false }] : []));
   return s;
 }
@@ -238,7 +240,7 @@ function refCard(){ const y0 = 128.6, y1 = 129.8, x0 = 54, w = 76, z1 = 30; let 
   if (facing([0,1,0])){ const Y = y1 + .06, T = (z, str, size, col = INK) => txY(x0 + w/2, Y, z, str, size, col, 700);
     s += shape(on(PY(Y - .02), rectUV(x0 + .3, z1 - 4.6, x0 + w - .3, z1 - .3)), '#3d3935', .6) + T(z1 - 3.3, 'REFERENCE', 2.1, '#f6f2e6');
     [['Arslan et al., Nat Biotechnol 42, 132 (2024)', INK, 2.1], ['doi 10.1038/s41587-023-01750-7', '#857d6e', 1.9], ['CIRCLES LOADED AT 8 pM; RCA ON THE INSTRUMENT', INK, 1.8], ['ABOUT 1 BILLION POLONIES PER FLOW CELL', INK, 1.8],
-     ['AVIDITES WORK AT nM, NOT uM; 4 COLOURS', INK, 1.8], ['96.2% OF BASES ABOVE Q30, 85.4% ABOVE Q40', INK, 1.8], ['READS SHOWN: 2 X 150 AND 1 X 300 CYCLES', INK, 1.8]].forEach((l, i) => { s += T(z1 - 8 - 3.25*i, l[0], l[2], l[1]); }); }
+     ['AVIDITES WORK AT nM, NOT uM; 4 COLOURS', INK, 1.8], ['96.2% OF BASES ABOVE Q30, 85.4% ABOVE Q40', INK, 1.8], ['READS SHOWN: 2 X 150 AND 1 X 300 CYCLES', INK, 1.8], ['ELEMENT SPEC: 2 LANES; KITS 2 X 75 TO 2 X 300', '#857d6e', 1.7]].forEach((l, i) => { s += T(z1 - 8 - 3.25*i, l[0], l[2], l[1]); }); }
   return s; }
 
 /* ---------- AVITI against Illumina, in one card ---------- */
@@ -265,7 +267,7 @@ function play(st, name, secs, note2){ st.anim = name; st.u = 0; if (note2) ui.fl
 const NEXT = ['Circularize', 'Hybridize', 'Rolling circle amplification', 'Prime'];
 function go(st, n){ if (st.anim) return ui.flash('One moment'); if (st.stage >= n) return ui.flash('Already done'); if (st.stage < n - 1) return ui.flash('First: ' + NEXT[st.stage]);
   st.stage = n;
-  if (n === 1) play(st, 'circ', 5, 'Done in a tube before loading: a splint holds the two ends together and ligase closes the circle');
+  if (n === 1) play(st, 'circ', 5, 'Two routes: in a tube before loading (Adept / Elevate kits, as in the paper), or on the flow cell itself (Cloudbreak Freestyle: linear library loaded, circularized in place)');
   if (n === 2) play(st, 'hyb', 4.5, 'Circles are flowed in at 8 pM; each one drifts until it pairs with a surface primer');
   if (n === 3){ play(st, 'rca', 12, 'ROLLING CIRCLE AMPLIFICATION: a strand-displacing polymerase (phi29 type) runs round the circle, copying it');
     const said = {}; ui.animate(() => { if (st.anim !== 'rca') return false;

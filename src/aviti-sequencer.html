@@ -18,7 +18,12 @@
    4. 300 CYCLES (2 x 150) of sequencing by avidity: bind avidites + polymerase; image in 4 channels; wash them off;
       step with an unlabelled 3'-blocked nucleotide; unblock. After cycle 150, a paired-end turn, then read 2.
    The imaging module (objective + camera + light source on a carriage) rides a rail across both stages. It serves one
-   side at a time: a side that is ready to image while the other is being imaged waits.
+   side at a time: a side that is ready to image while the other is being imaged waits. (Element documents one shared
+   imaging module and two independently controlled sides; whether the optics move or the stages move is not published,
+   so the moving carriage is a drawing choice.)
+   Verified from Element's specification sheet: dual flow cells, each a two-lane glass substrate in a plastic cartridge;
+   kits 2 x 75, 2 x 150, 2 x 300; >= 1 billion read pairs per flow cell; 2 x 150 high output in 38 h; instrument
+   29.5 x 37.6 x 28.5 in (H x W x D), 155 kg. The box here is drawn smaller than life.
 
    PARTS  CASE  shell . fascia . touch screen . door A, door B (bottom hinge) . back: grille, plate, inlet, ports
           STRUCTURE  base plate . bulkhead . deck plate on posts
@@ -100,7 +105,7 @@ const doorProf = a => { const t = a*88*Math.PI/180, c = Math.cos(t), s = Math.si
 
 /* ---------- screen: both sides ---------- */
 function sqScreen(st){
-  const x = XF + .42, T = (y, z, str, size, col = GRN) => tx(x, y, z, str, size, col, 700); let s = T(45, 51.6, 'AVI-TWO . 2 SIDES . 2 X 150 = 300 CYCLES EACH', 1.25, '#5fae82');
+  const x = XF + .42, T = (y, z, str, size, col = GRN) => tx(x, y, z, str, size, col, 700); let s = T(45, 51.6, 'AVI-TWO . 2 SIDES . KITS 2 X 75 TO 2 X 300 . THIS RUN 2 X 150, ~38 H', 1.1, '#5fae82');
   KEYS.forEach((k, i) => { const S = st[k], yb = i === 0 ? 55 : 35, ph = phaseOf(S);
     const line1 = S.run === 'idle' ? (!S.fc ? 'LOAD FLOW CELL' : !S.rc ? 'LOAD REAGENTS' : 'READY') : S.run === 'done' ? 'RUN COMPLETE' : S.run === 'hyb' ? 'HYBRIDIZE CIRCLES' : S.run === 'rca' ? 'POLONY GENERATION' : S.run === 'turn' ? 'PAIRED-END TURN' : `CYCLE ${cycNo(S)}/${RLEN} . R${S.cyc < 4 ? 1 : 2} ${cycNo(S) - (S.cyc < 4 ? 0 : 150)}/150`;
     const line2 = S.run === 'run' ? (S.wait ? 'WAITING FOR CAMERA' : ph === 'bind' ? 'BIND AVIDITES' : ph === 'img' ? 'IMAGE 4 CHANNELS' : ph === 'wash' ? 'WASH AVIDITES OFF' : 'STEP + UNBLOCK') : S.run === 'rca' ? 'ROLLING CIRCLE AMP.' : S.run === 'done' ? '2 X 150, 8 CYCLES SHOWN' : S.run === 'hyb' ? 'CIRCLES ONTO PRIMERS' : S.run === 'turn' ? 'READ 2 NEXT' : S.fc && S.rc ? 'PRESS START' : '';
@@ -138,7 +143,7 @@ function sqBody(st, m, k){
     s += shape(bp(rrUV(58, 4, 76, 18, 1.5)), '#3d3935', 1) + shape(bp(rrUV(14, 4, 32, 18, 1.5)), '#3d3935', 1);
     let v = ''; for (let z = 6; z <= 16; z += 2) v += pd(bp([[60, z], [74, z]], .3), false) + pd(bp([[16, z], [30, z]], .3), false); for (let z = 40; z <= 50; z += 2) v += pd(bp([[20, z], [70, z]], .3), false);
     s += `<path d="${v}" fill="none" stroke="${INK}" stroke-width="1.3" opacity=".75"/>`;
-    s += shape(bp(rrUV(36, 6, 54, 15, 1)), '#f3f0e6', .9) + txB(XB - .3, 45, 11.2, 'AVIDITY SEQUENCER', 1.5, INK, 800) + txB(XB - .3, 45, 8.2, '100-240V~ 600W', 1.3, INK, 700);
+    s += shape(bp(rrUV(36, 6, 54, 15, 1)), '#f3f0e6', .9) + txB(XB - .3, 45, 11.8, 'AVIDITY SEQUENCER', 1.5, INK, 800) + txB(XB - .3, 45, 9.4, 'REAL SIZE 96 X 72 X 75 CM, 155 KG', 1.1, INK, 700) + txB(XB - .3, 45, 7.4, 'DRAWN SMALLER', 1.1, '#857d6e', 700);
     s += shape(bp(rectUV(40, 20, 46, 25)), RECESS, .9) + shape(bp(rectUV(48, 21, 51.5, 23.6)), RECESS, .6) + shape(bp(rectUV(52.5, 21, 54.6, 22)), RECESS, .5); }
   if (RIGHT){ let v = ''; for (let z = 36; z <= 48; z += 2) v += pd([[16, Y0 - .15, z], [40, Y0 - .15, z]], false); s += `<path d="${v}" fill="none" stroke="${INK}" stroke-width="1.3" opacity=".75"/>`; }
   if (LEFT){ const sd = tone([0,1,0], m); s += shape(on(PY(Y1 + .15), rrUV(20, 36, 52, 48, 3)), mix(sd, '#ffffff', .22), 1) + txY(36, Y1 + .25, 39.6, 'AVI-TWO', 5.2, mix(sd, '#000000', .45), 800);
@@ -262,10 +267,12 @@ function startRun(S){ if (blocked(S)) return; if (S.run === 'done') return ui.fl
 function runLoop(){ if (loopOn) return; loopOn = true; const st = ui.st;
   ui.animate(dt => { let busy = false;
     // the camera: go to the side that is imaging; a second side that wants it waits
-    const want = KEYS.filter(k => st[k].run === 'run' && st[k].ph >= .3 && st[k].ph < .6);
-    if (!st.cam || !(st[st.cam].run === 'run' && st[st.cam].ph >= .3 && st[st.cam].ph < .6)) st.cam = want[0] || null;
+    const imaging = k => st[k].run === 'run' && st[k].ph >= .3 && st[k].ph < .6, want = KEYS.filter(imaging);
+    if (st.cam && !imaging(st.cam)) st.cam = null;                 // release the camera as soon as a side has its images
+    if (!st.cam && want.length) st.cam = want[0];                  // first come, first served
     for (const k of KEYS) st[k].wait = want.includes(k) && st.cam !== k;
-    st.cyT = st.cam ? SIDE[st.cam].yc : 45; st.cy += Math.max(-dt*40, Math.min(dt*40, st.cyT - st.cy)); if (Math.abs(st.cyT - st.cy) < .05) st.cy = st.cyT;
+    if (st.cam) st.cyT = SIDE[st.cam].yc;                           // the carriage stays where it last imaged until the other side needs it
+    st.cy += Math.max(-dt*28, Math.min(dt*28, st.cyT - st.cy)); if (Math.abs(st.cyT - st.cy) < .05) st.cy = st.cyT;
     const camReady = st.cam ? Math.abs(st.cy - SIDE[st.cam].yc) < .1 : false;
     for (const k of KEYS){ const S = st[k]; if (!ACTIVE(S)) continue; busy = true;
       if (S.run === 'hyb'){ S.ph += dt/2.2; if (S.ph >= 1){ S.run = 'rca'; S.ph = 0; ui.flash('Side ' + k + ': polony generation by rolling circle amplification', 2600); } continue; }
@@ -297,7 +304,8 @@ ui = mountFigure({
   acts:{ fcA: st => loadFC(st.A), fcB: st => loadFC(st.B), rcA: st => loadRC(st.A), rcB: st => loadRC(st.B), doorA: st => st.A.fc ? unload(st.A) : loadFC(st.A), doorB: st => st.B.fc ? unload(st.B) : loadFC(st.B), screen: st => { startRun(st.A); } },
   params:(st, q) => { for (const k of KEYS){ const S = st[k]; if (q.get('fc' + k) === '1'){ S.fc = 1; S.fcT = 1; } if (q.get('rc' + k) === '1'){ S.rc = 1; S.rcT = 1; }
       for (const key of ['fcT', 'rcT', 'door', 'cyc', 'ph']) if (q.has(key + k)) S[key] = +q.get(key + k); if (q.has('run' + k)) S.run = q.get('run' + k); }
-    if (q.has('cy')) st.cy = st.cyT = +q.get('cy'); if (q.has('cam')) st.cam = q.get('cam'); },
+    if (q.has('cy')) st.cy = st.cyT = +q.get('cy'); if (q.has('cam')) st.cam = q.get('cam');
+    if (KEYS.some(k => ACTIVE(st[k]))) setTimeout(runLoop, 0); },   // a run set up by URL runs
 });
 xrMount(() => ui, () => '');
 </script></body></html>
