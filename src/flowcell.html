@@ -416,6 +416,7 @@ ui = mountFigure({
     { label:'Sequence', onClick: st => sequence(st) },
     { label:'Turn around', onClick: st => turnAround(st) },
     { label:'Reset', onClick: st => resetAll(st) },
+    { label:'AVITI flow cell', onClick: () => { location.href = 'aviti-sequencing.html'; } },
     { label:'Library prep', onClick: () => { location.href = 'library-prep.html'; } },
     { label:'Back to sequencer', onClick: () => { location.href = 'sequencer-flowcell.html'; } },
   ],
