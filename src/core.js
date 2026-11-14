@@ -357,8 +357,8 @@ function mountFigure(cfg){
     <div id="readout"></div>
     ${cfg.idea ? `<p class="idea"><strong>The big idea</strong>${cfg.idea}</p>` : ''}
     <div class="controls">
-      <div class="ctl"><label for="wb">Hand-drawn wobble</label><input id="wb" type="range" min="0" max="7" step="0.1" value="2.4"></div>
-      <div class="ctl"><label>Colour</label><div class="row" id="pals"></div></div>
+      <div class="ctl" hidden><label for="wb">Hand-drawn wobble</label><input id="wb" type="range" min="0" max="7" step="0.1" value="2.4"></div>
+      <div class="ctl" hidden><label>Colour</label><div class="row" id="pals"></div></div>
       <div class="ctl"><label>View</label><div class="row"><button id="vreset">Front view</button><button id="vspin" aria-pressed="false">Turntable</button></div></div>
       <div class="ctl" id="lblctl" hidden><label>Labels</label><div class="row"><button id="lbl" aria-pressed="true">On</button></div></div>
     </div>
