@@ -130,7 +130,7 @@ ui = mountFigure({
   scene,
   buttons:[ { label:'MinION: insert flow cell', onClick: st => loadMinion(st) }, { label:'MinION: start', onClick: st => runMinion(st) }, { label:'PromethION: load 6 flow cells', onClick: st => loadProm(st) }, { label:'PromethION: start', onClick: st => runProm(st) },
     { label:'Reset', onClick: st => { if (st.busy) return ui.flash('One moment'); Object.assign(st, { lid:0, fcT:0, fc:0, run:0, gb:0, lid24:0, p24: new Array(24).fill(0), run24:0, gbP:0 }); } },
-    { label:'Nanopore flow cell', onClick: () => { location.href = 'nanopore-flow-cell.html'; } }, { label:'Revio sequencer', onClick: () => { location.href = 'pacbio-revio.html'; } }, { label:'Cover', onClick: () => { location.href = 'index.html'; } } ],
+    { label:'Nanopore flow cell', onClick: () => { location.href = 'flow-cell.html'; } }, { label:'Revio sequencer', onClick: () => { location.href = '../pacbio/sequencer.html'; } }, { label:'Cover', onClick: () => { location.href = '../../index.html'; } } ],
   stats: st => [ { label:'MinION', small:true, value: st.run ? st.gb.toFixed(1) + ' Gb' : st.fc ? 'ready' : 'empty' }, { label:'PromethION 24', small:true, value: st.run24 ? st.gbP.toFixed(0) + ' Gb' : st.p24.filter(Boolean).length + '/24 loaded' } ],
   params:(st, q) => { if (q.get('fc') === '1'){ st.fc = 1; st.fcT = 1; } if (q.has('lid')) st.lid = +q.get('lid'); if (q.has('fcT')) st.fcT = +q.get('fcT'); if (q.has('p24')){ const n = +q.get('p24'); for (let i = 0; i < n; i++) st.p24[i] = 1; } if (q.has('lid24')) st.lid24 = +q.get('lid24');
     if (q.get('run') === '1'){ st.run = 1; st.gb = 12.4; } if (q.get('run24') === '1'){ st.run24 = 1; st.gbP = 820; } },

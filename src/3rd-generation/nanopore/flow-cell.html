@@ -186,7 +186,7 @@ ui = mountFigure({
   scene,
   buttons:[ ...STEPS.map(k => ({ label: NAMES[k], onClick: st => doStep(st, k) })),
     { label:'Reset', onClick: st => { if (st.busy) return ui.flash('One moment'); Object.assign(st, { i:0, pip:null, ppCover:0, spCover:0, bubble:1, primeLvl:1, libLvl:.3, libMixed:false, shield:0, running:false, adv:0 }); } },
-    { label:'Next: devices', onClick: () => { location.href = 'nanopore-device.html'; } }, { label:'Nanopore prep', onClick: () => { location.href = 'nanopore-library-prep.html'; } }, { label:'Cover', onClick: () => { location.href = 'index.html'; } } ],
+    { label:'Next: devices', onClick: () => { location.href = 'devices.html'; } }, { label:'Nanopore prep', onClick: () => { location.href = 'library-prep.html'; } }, { label:'Cover', onClick: () => { location.href = '../../index.html'; } } ],
   stats: st => [ { label:'Step', value: `${st.i}/9` }, { label:'Pores', small:true, value: done(st, 'check') ? 1420 : '-' }, { label:'Bases read', small:true, value: st.running ? st.adv : '-' } ],
   params:(st, q) => { if (q.has('i')){ st.i = +q.get('i'); const i = st.i; st.bubble = i > 2 ? 0 : 1; st.ppCover = i > 1 && i < 8 ? 1 : 0; st.spCover = i > 5 && i < 8 ? 1 : 0; st.primeLvl = i > 5 ? .17 : i > 3 ? .34 : 1; st.libMixed = i > 4; st.libLvl = i > 6 ? 0 : i > 4 ? 1 : .3; st.shield = i >= 8 ? 1 : 0; if (i >= 9){ st.running = true; st.adv = +(q.get('adv') || 12); } } },
 });

@@ -69,7 +69,7 @@ function run(st){ if (st.anim) return ui.flash('One moment'); if (!st.inj) retur
   anim(st, 'mig', 7, u => { st.mig = u; let n = 0; for (let k = 1; k <= st.frag; k++){ const sp = 1/(1 + (k - 1)*.12); if (c01(u*sp*1.6)*(WIN + 6 - CY0 - 4) + CY0 + 4 >= WIN) n = k; } st.peaks = Math.max(st.peaks, n); }); }
 ui = mountFigure({ fig:'00', turn:'full', title:'Sanger sequencing (sketch)', size:[BX, BY, 40], palette:'mustard', state:{ frag:0, inj:0, mig:0, read:0, peaks:0, anim:null }, scene,
   buttons:[ { label:'Extend + terminate', onClick: st => extend(st) }, { label:'Inject', onClick: st => inject(st) }, { label:'Electrophoresis', onClick: st => run(st) },
-    { label:'Reset', onClick: st => { if (st.anim) return ui.flash('One moment'); Object.assign(st, { frag:0, inj:0, mig:0, read:0, peaks:0 }); } }, { label:'Cover', onClick: () => { location.href = 'index.html'; } } ],
+    { label:'Reset', onClick: st => { if (st.anim) return ui.flash('One moment'); Object.assign(st, { frag:0, inj:0, mig:0, read:0, peaks:0 }); } }, { label:'Cover', onClick: () => { location.href = '../../index.html'; } } ],
   stats: st => [ { label:'Fragments', value: st.frag }, { label:'Read', small:true, value: READ.slice(0, st.peaks).map(b => BASES[b]).join('') || '-' } ],
   params:(st, q) => { for (const k of ['frag', 'inj', 'mig', 'read', 'peaks']) if (q.has(k)) st[k] = +q.get(k); } });
 xrMount(() => ui, () => '', { labelsOnly:true });

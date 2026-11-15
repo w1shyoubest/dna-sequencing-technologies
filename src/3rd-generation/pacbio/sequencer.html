@@ -158,8 +158,8 @@ ui = mountFigure({
   buttons:[ { label:'Load SMRT Cell tray', onClick: st => loadTray(st) }, { label:'Load sequencing plate', onClick: st => loadPlate(st) },
     { label:'Start a cell', choices: st => st.cells.map((c, i) => ({ label:'Cell ' + (i + 1), current: c.run === 'run', disabled: c.run === 'done', why: 'Cell ' + (i + 1) + ' is finished', onClick: st => startCell(st, i) })) },
     { label:'Unload', onClick: st => unloadAll(st) },
-    { label:'SMRT Cell + ZMW', onClick: () => { location.href = 'pacbio-smrt-cell.html'; } }, { label:'SMRTbell prep', onClick: () => { location.href = 'pacbio-library-prep.html'; } },
-    { label:'Illumina sequencer', onClick: () => { location.href = 'sequencer-flowcell.html'; } }, { label:'Cover', onClick: () => { location.href = 'index.html'; } } ],
+    { label:'SMRT Cell + ZMW', onClick: () => { location.href = 'smrt-cell.html'; } }, { label:'SMRTbell prep', onClick: () => { location.href = 'library-prep.html'; } },
+    { label:'Illumina sequencer', onClick: () => { location.href = '../../2nd-generation/illumina/sequencer.html'; } }, { label:'Cover', onClick: () => { location.href = '../../index.html'; } } ],
   stats: st => [ { label:'Cells running', value: st.cells.filter(c => c.run === 'run').length }, { label:'HiFi so far', small:true, value: st.cells.reduce((a, c) => a + gbOf(c), 0) + ' Gb' }, { label:'Finished', small:true, value: st.cells.filter(c => c.run === 'done').length + '/4' } ],
   acts:{ door: st => st.tray ? unloadAll(st) : loadTray(st), tray: st => loadTray(st), plate: st => loadPlate(st), screen: st => startCell(st, st.cells.findIndex(c => c.run === 'idle')) },
   params:(st, q) => { if (q.get('tray') === '1'){ st.tray = 1; st.trayT = 1; } if (q.get('plate') === '1'){ st.plate = 1; st.plateT = 1; } for (const k of ['door', 'trayT', 'plateT']) if (q.has(k)) st[k] = +q.get(k);

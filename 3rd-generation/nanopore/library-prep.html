@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sanger sequencing (sketch)</title>
+<title>Nanopore library prep</title>
 <style>.controls .ctl:nth-child(1),.controls .ctl:nth-child(2){display:none!important}</style><style>.mcap{display:none!important}@media (max-width:560px){.stat .v{font-size:20px!important}.stats{align-items:flex-end}}@media (min-width:561px){.vset{top:4px!important}#stats{top:var(--vset-h,44px)!important}}</style><style>@media (max-width:560px){body > header{display:none}}</style><script>window.FIG_A = () => innerWidth <= 560 ? 1.1 : .75;</script><script>window.LBL_U = () => { if (innerWidth > 560) return 0; const s = document.getElementById("fig"); return s && s.clientWidth && s.viewBox.baseVal.width ? s.viewBox.baseVal.width / s.clientWidth : 0; };</script></head><body>
 <script>
 /* ============================================================
@@ -647,74 +647,128 @@ function mountKeypad(spec){
 
 </script>
 <script>
-/* First-generation sequencing, as a SKETCH: Sanger chain termination read by capillary electrophoresis.
-   1. One template, one primer, polymerase, the four dNTPs and a little of each ddNTP (dideoxy, no 3' OH, each with its
-      own dye). Cycle sequencing: whenever a ddNTP is taken up the chain stops, so every length ending in each base
-      is made, in many copies.
-   2. The fragments are injected into a capillary filled with polymer and pulled through by voltage: shorter ones move
-      faster and arrive at the laser window first, one base apart.
-   3. The dye on each arriving fragment is read: the order of colours is the sequence. Read length ~500-900 bases. */
-const BX = 150, BY = 120, SZ = 8, KQ = Math.sqrt(1.5), N = 12;
-const BASES = 'ACGT', BCOL = ['#43c25c', '#4aa3ff', '#f4c430', '#e2483d'];
-const TPL = [0, 2, 1, 3, 3, 0, 1, 2, 0, 3, 2, 1], READ = TPL.map(b => 3 - b);     // template bases 5'<-3'; the read is the complement
-const GLASS = matOf('#d9eef1'), PAPER = matOf('#fbfaf3'), PRIM = '#55504a', TPLC = '#8a8f94', NEW = '#2f6fbf';
+/* Oxford Nanopore library prep by ligation, shown only as what happens to the DNA. Two kits side by side:
+     ROUTE 1  Ligation Sequencing Kit (SQK-LSK114), one sample: end-prep, then the sequencing adapter goes straight on.
+     ROUTE 2  Native Barcoding Kit (SQK-NBD114.24/96), many samples: end-prep, a native barcode on each sample, pool,
+              then the native adapter goes on the pool.
+   Sources: ONT protocols "Ligation sequencing gDNA V14" and "Native barcoding gDNA V14" (steps: DNA repair and end-prep;
+   [native barcode ligation; pooling]; adapter ligation and clean-up with Long or Short Fragment Buffer; priming and
+   loading the flow cell). Beads are schematic: an insert of several kb is drawn as 24 beads.
+
+   WHAT EACH STEP DOES
+   0. Double-stranded DNA from extraction (HMW for genomes; amplicons or cDNA also work), with nicks and damage.
+   1. OPTIONAL: fragment (g-TUBE, needle) to 8-10 kb for yield, or size-select (SRE, BluePippin) for length. Skipped
+      for ultra-long reads.
+   2. END-PREP + NICK REPAIR (NEBNext FFPE repair mix + Ultra II end-prep): nicks and damaged bases repaired, ends
+      blunted, 5' phosphorylated, one A on each 3' end.
+   3. LIGATE NATIVE BARCODES (route 2 only): a short double-stranded barcode with a T overhang goes on both ends of
+      every fragment, a different barcode per sample; the samples are then pooled.
+   4. LIGATE SEQUENCING ADAPTERS: the Y-shaped adapter (T overhang, or blunt onto the barcode) goes on both ends. One
+      arm carries the MOTOR PROTEIN (a helicase, pre-loaded) that will unwind the strand and feed it through the pore;
+      the other arm carries the tether that holds the molecule on the membrane near the pores.
+   5. CLEAN UP on beads, washed with Long Fragment Buffer (keeps everything) or Short Fragment Buffer (keeps < 3 kb too).
+   6. PRIME + LOAD: the flow cell is primed (flush buffer + flush tether), then library + sequencing buffer + library
+      beads are dripped onto the priming port. The tether docks the adapter on the membrane; the motor waits at the
+      pore. */
+const BX = 136, BY = 150, SZ = 8, KQ = Math.sqrt(1.5), RB = 1.05, DY = 2.2, DUP = 1.7, ZM = 17, XR = [32, 62, 92], YC = 75, CXQ = 122;
+const BCOL = ['#43c25c', '#4aa3ff', '#f4c430', '#e2483d'];
+const ADP = '#17a398', ADPL = '#9fe0d8', MOTOR = { l:'#f3a6bb', m:'#d8869c', d:'#4b2430' }, TETH = '#e0409a', BCA = '#9c6b30', BCB = '#6b7a3a', PHOS = '#ff9f43', TPLC = '#8a8f94', TPL2 = '#c3c7ca', GLASS = matOf('#d9eef1'), PAPER = matOf('#fbfaf3');
 const lerp = (a, b, t) => a.map((v, i) => v + (b[i] - v)*t), c01 = v => Math.max(0, Math.min(1, v)), add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const mu = w => `style="stroke-width:${w.toFixed(2)}"`;
 const bead = (p, r, col, w = .5, sc = INK) => { const q = P(...p); return `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${f(r*KQ)}" fill="${col}" stroke="${sc}" stroke-width="${w}"/>`; };
-const star = (p, r, col) => { const q = P(...p), R = r*KQ; let d = ''; for (let i = 0; i < 16; i++){ const a = i*Math.PI/8, rr = i % 2 ? R*.5 : R; d += (i ? 'L' : 'M') + f(q[0] + rr*Math.sin(a)) + ' ' + f(q[1] - rr*Math.cos(a)); } return `<path d="${d}Z" fill="${col}" stroke="${INK}" stroke-width=".5" stroke-linejoin="round"/>`; };
-const flat = (x, y, z, str, size, col = '#5f6b70') => `<text transform="${txM(P(x, y, z), Dv(0,-1,0), Dv(1,0,0))}" font-size="${size}" fill="${col}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="800" letter-spacing=".04em">${str}</text>`;
-function chain(pts, cols, rib = PRIM, r = 1){ if (!pts.length) return ''; const d = pd(pts, false); return (pts.length > 1 ? `<path d="${d}" fill="none" stroke="${INK}" ${mu(1.6)} stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${rib}" ${mu(1.1)} stroke-linecap="round" stroke-linejoin="round"/>` : '') + pts.map((p, i) => [depthOf(p), bead(p, r, cols[i], 1, rib)]).sort((a, b) => a[0] - b[0]).map(x => x[1]).join(''); }
-
-/* ---------- the reaction: the template, and the family of terminated fragments ---------- */
-const RX = 30, RY0 = 20, RW = 50, RL = 80, DY = 2.4;
-function reaction(st){
-  let s = box(RX, RY0, 2, RX + RW, RY0 + RL, SZ, GLASS, toneI, 1.2) + flat(RX + 4, RY0 + RL/2, SZ + .05, 'CYCLE SEQUENCING: ONE TEMPLATE, MANY STOPS', 2.2);
-  const items = [], put = (at, svg) => items.push({ at, svg });
-  // the template (grey) with the primer (dark) and the growing copy; shown once at the top row
-  const tp = Array.from({length:N + 4}, (_, j) => [RX + 10, RY0 + 8 + j*DY, SZ + 1.4]);
-  put(tp[8], chain(tp, tp.map((_, j) => j < 4 ? '#cfd4d8' : BCOL[TPL[j - 4]]), TPLC));
-  put(add(tp[1], [2.2, 0, 0]), chain([0, 1, 2, 3].map(j => add(tp[j], [2.2, 0, 0])), [PRIM, PRIM, PRIM, PRIM], PRIM) + flat(RX + 10, RY0 + 2, SZ + .05, "PRIMER  5'", 1.4));
-  // fragments made so far: length k ends in a dye-labelled ddNTP of base READ[k-1]
-  const made = st.frag;
-  for (let k = 1; k <= made; k++){ const x = RX + 14 + ((k - 1) % 6)*5.6, row = Math.floor((k - 1)/6), y0 = RY0 + 8 + row*34;
-    const pts = Array.from({length:4 + k}, (_, j) => [x, y0 + j*DY, SZ + 1.2]), cols = pts.map((_, j) => j < 4 ? PRIM : BCOL[READ[j - 4]]);
-    put(pts[2], chain(pts, cols, NEW, .9) + star(add(pts[pts.length - 1], [0, 1.6, .6]), 1.3, BCOL[READ[k - 1]])); }
-  if (made) put([RX + 44, RY0 + 74, SZ + 1], flat(RX + 46, RY0 + 60, SZ + .05, 'EACH ENDS IN A ddNTP: NO 3 OH, CHAIN STOPS', 1.5));
-  return s + byDepth(items);
-}
-/* ---------- the capillary: fragments migrate, shortest first, past the laser window ---------- */
-const CXc = 100, CY0 = 20, CL = 80, CZ = SZ + 4, WIN = CY0 + 64;
-function capillary(st){
-  let s = box(CXc - 4, CY0, 2, CXc + 4, CY0 + CL, SZ, GLASS, toneI, 1.2);
-  s += `<g opacity=".6">${rod([CXc, CY0 + 2, CZ], [CXc, CY0 + CL - 2, CZ], 1.6, CLEAR, toneI, .8)}</g>` + flat(CXc + 7, CY0 + 30, SZ + .05, 'CAPILLARY, POLYMER FILLED, HIGH VOLTAGE', 1.6) + flat(CXc - 7, CY0 + 6, SZ + .05, 'INJECT (-)', 1.6) + flat(CXc - 7, CY0 + CL - 6, SZ + .05, '(+)', 1.6);
-  s += box(CXc - 5, WIN - 1, SZ, CXc + 5, WIN + 1, CZ + 2.4, matOf('#3d3935'), toneI, .6) + flat(CXc + 9, WIN, SZ + .05, 'LASER + DETECTOR', 1.6);
-  if (st.inj){ // band k (length k) sits at distance along the capillary: shorter runs further
-    let b = ''; for (let k = 1; k <= st.frag; k++){ const sp = 1/(1 + (k - 1)*.12), y = CY0 + 4 + (WIN + 6 - CY0 - 4)*c01(st.mig*sp*1.6); if (y > WIN + 2) continue; b += bead([CXc, y, CZ + .2], 1.2, BCOL[READ[k - 1]], .5); }
-    s += b; }
+const note = (p, str, col = INK, size = 3) => { const q = P(...p); return `<text x="${f(q[0])}" y="${f(q[1])}" font-size="${size}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="800" fill="${col}" stroke="#f2efe7" style="stroke-width:.9;paint-order:stroke">${str}</text>`; };
+const flat = (x, y, str, size, col = '#5f6b70') => `<text transform="${txM(P(x, y, SZ + .05), Dv(0,-1,0), Dv(1,0,0))}" font-size="${size}" fill="${col}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="800" letter-spacing=".04em">${str}</text>`;
+const baseAt = (r, k) => { const a = Math.abs(k) + r*11; return (a*7 + ((a*a) >> 1) + 3*(a % 5)) % 4; };
+const yk = (m, k) => m.yc + (k - 9.5)*DY, tp = (m, k) => [m.x - DUP, yk(m, k), ZM], bp = (m, k) => [m.x + DUP, yk(m, k), ZM];
+const strand = (pts, cols, rib) => { const d = pd(pts, false); return `<path d="${d}" fill="none" stroke="${INK}" ${mu(1.75)} stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${rib}" ${mu(1.25)} stroke-linecap="round" stroke-linejoin="round"/>` + pts.map((p, i) => [depthOf(p), bead(p, RB, cols[i], 1.1, rib)]).sort((a, b) => a[0] - b[0]).map(x => x[1]).join(''); };
+function clampAt(c, m, R = 3.6){ const pts = []; for (let i = 0; i <= 24; i++){ const t = (48 + 264*i/24)*Math.PI/180; pts.push(P(...[0, 1, 2].map(j => c[j] + CAM_R[j]*R*.58*Math.sin(t) + CAM_U[j]*R*.58*Math.cos(t)))); }
+  const d = 'M' + pts.map(q => f(q[0]) + ' ' + f(q[1])).join('L'), st = (col, w) => `<path d="${d}" fill="none" stroke="${col}" style="stroke-width:${(w*R*KQ).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  return `<g opacity=".85">${st(INK, .56)}${st(m.m, .5)}${st(m.l, .2)}</g>`; }
+/* m = { x, yc, k0, k1, nicks, ragged, atail, bc (barcode colour or null), bcE (0..1 arriving), adp (0..1 arriving), grey, from } */
+function drawMol(m, mm){
+  const off = m.from ? m.from : [0, 0, 0], sh = p => add(p, off), nick = new Set(m.nicks || []);
+  let s = '', rg = '';
+  const topPts = [], botPts = [], tc = [], bc = [];
+  for (let k = m.k0; k <= m.k1; k++){ topPts.push(sh(tp(m, k))); botPts.push(sh(bp(m, k))); tc.push(m.grey ? '#d6dadd' : BCOL[baseAt(0, k)]); bc.push(m.grey ? '#eceeef' : BCOL[3 - baseAt(0, k)]); }
+  const n = topPts.length, segs = (pts, cols, isTop) => { const out = []; let cur = [], cc = []; for (let i = 0; i < n; i++){ const k = m.k0 + i, cut = isTop ? nick.has(k) : nick.has(-k - 100); if (cut){ if (cur.length){ out.push([cur, cc]); cur = []; cc = []; } } else { cur.push(pts[i]); cc.push(cols[i]); } } if (cur.length) out.push([cur, cc]); return out; };
+  let T = segs(topPts, tc, true), B = segs(botPts, bc, false);
+  if (m.ragged){ T[0][0] = T[0][0].slice(2); T[0][1] = T[0][1].slice(2); const L = B[B.length - 1]; L[0] = L[0].slice(0, -2); L[1] = L[1].slice(0, -2); }
+  for (let i = 0; i < n; i++) if (!nick.has(m.k0 + i) && !nick.has(-(m.k0 + i) - 100) && !(m.ragged && (i < 2 || i >= n - 2))) rg += pd([topPts[i], botPts[i]], false);
+  s += `<path d="${rg}" fill="none" stroke="${INK}" ${mu(.3)} opacity=".6"/>`;
+  for (const [pts, cols] of T) s += strand(pts, cols, TPLC); for (const [pts, cols] of B) s += strand(pts, cols, TPL2);
+  if (m.atail) s += bead(sh(bp(m, m.k0 - 1)), RB, BCOL[0], 1.1, TPL2) + bead(sh(tp(m, m.k1 + 1)), RB, BCOL[0], 1.1, TPLC) + bead(sh(add(tp(m, m.k0), [0, -.6, 0])), .5, PHOS, .4) + bead(sh(add(bp(m, m.k1), [0, .6, 0])), .5, PHOS, .4);
+  // barcode blocks (3 bp) at each end
+  let kL = m.k0 - 1, kR = m.k1 + 1;
+  if (m.bc){ const e = m.bcE == null ? 1 : m.bcE, lift = [0, 0, 10*(1 - e)];
+    for (const end of [-1, 1]){ const ks = end > 0 ? [kR, kR + 1, kR + 2] : [kL, kL - 1, kL - 2]; const Tp = ks.map(k => add(sh(tp(m, k)), [0, end*8*(1 - e), lift[2]])), Bp = ks.map(k => add(sh(bp(m, k)), [0, end*8*(1 - e), lift[2]]));
+      let r2 = ''; for (let i = 0; i < 3; i++) r2 += pd([Tp[i], Bp[i]], false); s += `<path d="${r2}" fill="none" stroke="${INK}" ${mu(.3)} opacity=".6"/>` + strand(Tp, Tp.map(() => m.bc), TPLC) + strand(Bp, Bp.map(() => mix(m.bc, '#ffffff', .5)), TPL2); }
+    kL -= 3; kR += 3; }
+  // Y adapters: 3-bp stem, then two arms splaying apart; motor protein on the top-strand arm, tether on the other
+  if (m.adp != null){ const e = m.adp, lift = [0, 0, 12*(1 - e)];
+    for (const end of [-1, 1]){ const d = end, ks = end > 0 ? [kR, kR + 1, kR + 2] : [kL, kL - 1, kL - 2], sl = [0, end*10*(1 - e), lift[2]];
+      const Tp = ks.map(k => add(sh(tp(m, k)), sl)), Bp = ks.map(k => add(sh(bp(m, k)), sl));
+      const armT = [1, 2, 3].map(i => add(sh([m.x - DUP - i*1.1, yk(m, ks[2] + d*i), ZM + i*.9]), sl)), armB = [1, 2, 3].map(i => add(sh([m.x + DUP + i*1.1, yk(m, ks[2] + d*i), ZM + i*.25]), sl));
+      let r2 = ''; for (let i = 0; i < 3; i++) r2 += pd([Tp[i], Bp[i]], false);
+      s += `<path d="${r2}" fill="none" stroke="${INK}" ${mu(.3)} opacity=".6"/>` + strand([...Tp, ...armT], [ADP, ADP, ADP, ADP, ADP, ADP], ADP) + strand([...Bp, ...armB], [ADPL, ADPL, ADPL, TETH, TETH, TETH], ADPL);
+      const mp = add(armT[1], [-1.2, 0, 1.6]); s += clampAt(mp, mm, 3.2); }
+  }
   return s;
 }
-const CXd = 130;
-function chrom(st){ const x0 = CXd, x1 = CXd + 1.2, y0 = 28, w = 64, z1 = 30; let s = box(x0, y0, 2, x1, y0 + w, z1, PAPER, toneI, 1.1);
-  if (facing([1,0,0])){ const X = x1 + .06; s += shape(on(PX(X - .02), rectUV(y0 + .3, z1 - 4.4, y0 + w - .3, z1 - .3)), st.read ? 'var(--accent,#f4b829)' : '#3d3935', .6) + tx(X, y0 + w/2, z1 - 3.1, 'CHROMATOGRAM', 1.7, st.read ? INK : '#f6f2e6', 800);
-    s += line([[X, y0 + w - 4, 7], [X, y0 + 4, 7]], .8); const n = st.read ? st.peaks : 0; let txt = '';
-    for (let k = 1; k <= n; k++){ const yc = y0 + w - 6 - (k - 1)*4.6, col = BCOL[READ[k - 1]], pts = []; for (let i = 0; i <= 10; i++){ const t = (i - 5)/5; pts.push([X, yc - t*1.8, 7 + 11*Math.exp(-t*t*3)]); } s += `<path d="${pd(pts, false)}" fill="none" stroke="${col}" stroke-width="1.6"/>`; txt += BASES[READ[k - 1]]; }
-    s += tx(X, y0 + w/2, 22, txt || (st.read ? '' : 'RUN THE GEL'), 2.2, INK, 800) + tx(X, y0 + w/2, 4.2, 'ARRIVAL ORDER = SEQUENCE, ONE BASE APART', 1.2, '#857d6e', 700); }
+const STEPS = [null,
+  { name:'Fragment or size select (optional)', note:'Optional: shear to 8-10 kb for yield (g-TUBE), or size-select for length (SRE, BluePippin). Skipped for ultra-long reads', r:['~10 kb pieces', '~10 kb pieces'] },
+  { name:'End-prep + nick repair', note:'FFPE repair mix + Ultra II end-prep: nicks and damage repaired, ends blunt, 5 phosphate, one A on each 3 end', r:['repaired, 3 A', 'repaired, 3 A'] },
+  { name:'Ligate native barcodes', note:'Route 2 only: a double-stranded barcode with a T overhang goes on both ends of every fragment, one barcode per sample; then the samples are pooled', r:['no barcode (one sample)', 'barcoded, pooled'] },
+  { name:'Ligate sequencing adapters', note:'The Y adapter goes on both ends: one arm carries the motor protein (helicase), the other the membrane tether', r:['adapters + motor on', 'adapters + motor on'] },
+  { name:'Clean up', note:'Beads, washed with Long Fragment Buffer (keeps all sizes) or Short Fragment Buffer (keeps < 3 kb too); elute', r:['clean library', 'clean library'] },
+  { name:'Prime + load', note:'Flow cell primed with flush buffer + tether; library + sequencing buffer + library beads dripped on. The tether docks the molecule at the membrane, the motor waits at a pore', r:['on the flow cell', 'on the flow cell'] } ];
+let LP_LABELS = [];
+function patch(st, m){
+  const u = st.anim ? st.u : 1, fI = st.anim ? c01((u - .25)/.5) : 1, L = LP_LABELS, n = st.step, lab = (at, text, on = false) => L.push({ at, text, on }), on = !!st.anim;
+  let s = box(8, 14, 2, 112, 136, SZ, GLASS, toneI, 1.4) + flat(XR[0] + 6.5, YC, 'ROUTE 1: LIGATION KIT, ONE SAMPLE', 3.2) + flat(XR[1] + 6.5, YC, 'ROUTE 2: NATIVE BARCODING, SAMPLE A', 3.2) + flat(XR[2] + 6.5, YC, 'ROUTE 2: SAMPLE B', 3.2);
+  const items = [], put = (at, svg) => items.push({ at, svg }), fade = (svg, o) => `<g opacity="${f(o)}">${svg}</g>`;
+  const base = r => ({ x: XR[r], yc: YC, k0: 0, k1: 23 });
+  for (let r = 0; r < 3; r++){ const M = base(r), bc = r === 1 ? BCA : r === 2 ? BCB : null;
+    if (n === 0){ put([M.x, YC, ZM], drawMol({ ...M, k0: -16, k1: 36, nicks: [4, -(19) - 100, 29] }, m)); continue; }
+    if (n === 1){ put([M.x, YC, ZM], drawMol({ ...M, nicks: [4, -(19) - 100], ragged: true }, m));
+      if (st.anim){ const e = ease(c01((u - .3)/.5)); put([M.x, YC + 40, ZM], fade(drawMol({ x: M.x, yc: YC, k0: 26, k1: 36 }, m), 1 - e)); put([M.x, YC - 40, ZM], fade(drawMol({ x: M.x, yc: YC, k0: -16, k1: -3 }, m), 1 - e)); } continue; }
+    if (n === 2){ const rep = st.anim ? ease(c01((u - .3)/.4)) : 1; put([M.x, YC, ZM], drawMol({ ...M, nicks: rep > .5 ? [] : [4, -(19) - 100], ragged: rep < .5, atail: rep > .8 }, m)); continue; }
+    const bcE = n === 3 && st.anim ? ease(c01((u - .2)/.5)) : 1, adpE = n === 4 && st.anim ? ease(c01((u - .2)/.5)) : 1;
+    put([M.x, YC, ZM], drawMol({ ...M, atail: n < 4 || (n === 4 && adpE < .5), bc: bc && n >= 3 ? bc : null, bcE, adp: n >= 4 ? adpE : null, from: n >= 6 ? [0, 0, 3*fI] : null }, m)); }
+  // route 2 pools after barcoding: sample B slides next to A
+  if (n >= 3 && !(n === 3 && st.anim && u < .7)) put([XR[2] + 6, YC, ZM + 1], note([XR[2] + 6.5, YC - 30, ZM + 2], 'POOLED WITH A', '#5f6b70', 2.8));
+  const M0 = base(0), M1 = base(1);
+  if (n === 0) lab(tp(M0, -10), 'dsDNA FROM EXTRACTION', false), lab(tp(M0, 4), 'NICK', false);
+  if (n === 1){ lab(tp(M0, 10), 'FRAGMENT ~10 kb', on); if (on && u > .1 && u < .7) for (const k of [-1.5, 24.5]) put([M0.x, yk(M0, k), ZM + 3], note([M0.x, yk(M0, k), ZM + 3.5], 'CUT', '#e2483d', 3)); }
+  if (n === 2){ if (on) lab(tp(M0, 4), 'NICK REPAIRED', true); else { lab(bp(M0, -1), 'A OVERHANG', false); lab(tp(M0, 10), 'INSERT', false); } }
+  if (n === 3){ lab(tp(M1, 25), 'NATIVE BARCODE A', on); lab(tp(base(2), 25), 'NATIVE BARCODE B', on); lab(tp(M0, 24), 'ROUTE 1: NO BARCODE', false); }
+  if (n >= 4){ const kR = 24 + 3*(n >= 3 ? 1 : 0); lab(add(tp(M0, 26), [-2, 0, 1.5]), 'Y ADAPTER', on && n === 4); lab(add(tp(M0, 28), [-4.5, 0, 4.3]), 'MOTOR PROTEIN (HELICASE)', on && n === 4); lab(add(bp(M0, 28), [4.5, 0, .8]), 'TETHER ARM', n === 6); if (n >= 4 && n < 6) lab(tp(M1, kR + 1), 'ADAPTER ON TOP OF BARCODE', false); }
+  if (n === 6) lab(tp(M0, 10), 'LIBRARY + BEADS: ONTO THE PRIMED FLOW CELL', on);
+  return s + byDepth(items);
+}
+function qcCard(st){ const x0 = CXQ, x1 = CXQ + 1.2, y0 = 52, w = 46, z0 = 2, z1 = 27, show = st.step >= 5 && !(st.step === 5 && st.anim && st.u < .5);
+  let s = box(x0, y0, z0, x1, y0 + w, z1, PAPER, toneI, 1.1);
+  if (facing([1,0,0])){ const X = x1 + .06; s += shape(on(PX(X - .02), rectUV(y0 + .3, z1 - 4.6, y0 + w - .3, z1 - .3)), show ? 'var(--accent,#93d3b0)' : '#3d3935', .6) + tx(X, y0 + w/2, z1 - 3.3, 'LOADING SHEET', 2, show ? INK : '#f6f2e6', 800);
+    if (show) [['QUBIT: 450 ng IN 12 uL', INK, 1.5], ['LONG FRAGMENT BUFFER WASH', INK, 1.4], ['LOAD: 10-20 fmol (~300 ng)', INK, 1.4], ['+ SEQUENCING BUFFER + LIBRARY BEADS', '#857d6e', 1.25], ['FLOW CELL PRIMED: FLUSH BUFFER + TETHER', '#857d6e', 1.25], ['CHECK: > 1200 PORES ACTIVE', '#857d6e', 1.25]].forEach((l, i) => { s += tx(X, y0 + w/2, 19 - 3*i, l[0], l[2], l[1], 700); });
+    else s += tx(X, y0 + w/2, 14, 'NOT READY YET', 1.6, '#857d6e', 700); }
   return s; }
 function scene(st, m){ const btop = boardTop(0, 0, BX, BY, 2, 5), cs = (a, b) => { const o = []; for (const x of [a[0], b[0]]) for (const y of [a[1], b[1]]) for (const z of [a[2], b[2]]) o.push([x, y, z]); return o; };
-  let s = board(0, 0, BX, BY, 2, 5) + castShadow(cs([RX, RY0, 2], [RX + RW, RY0 + RL, SZ]), 2, btop) + castShadow(cs([CXc - 4, CY0, 2], [CXc + 4, CY0 + CL, SZ]), 2, btop) + castShadow(cs([CXd, 28, 2], [CXd + 1.2, 92, 30]), 2, btop);
-  s += byDepth([{ box: [[RX, RY0, 2], [RX + RW, RY0 + RL, 40]], svg: reaction(st) }, { box: [[CXc - 5, CY0, 2], [CXc + 5, CY0 + CL, 20]], svg: capillary(st) }, { box: [[CXd, 28, 2], [CXd + 1.3, 92, 30]], svg: chrom(st) }]);
-  return s + xrCallouts([{ at: [RX + 10, RY0 + 30, SZ + 1.4], text: 'TEMPLATE', on: false }, { at: [RX + 12.2, RY0 + 10, SZ + 1.4], text: 'PRIMER', on: false }, ...(st.frag ? [{ at: [RX + 14, RY0 + 8 + 4*DY + 1.6, SZ + 1.8], text: 'DYE ddNTP TERMINATOR', on: st.anim === 'ext' }] : []), { at: [CXc, WIN, CZ + 2.4], text: 'DETECTION WINDOW', on: st.anim === 'mig' }], [0, 140, 10, 900, 0, 40]); }
+  LP_LABELS = []; let s = board(0, 0, BX, BY, 2, 5) + castShadow(cs([8, 14, 2], [112, 136, SZ]), 2, btop) + castShadow(cs([CXQ, 52, 2], [CXQ + 1.2, 98, 27]), 2, btop);
+  s += byDepth([{ box: [[8, 14, 2], [118, 136, 50]], svg: patch(st, m) }, { box: [[CXQ, 52, 2], [CXQ + 1.3, 98, 27]], svg: qcCard(st) }]);
+  if (facing([1,0,0])) LP_LABELS.push({ at: [CXQ + 1.3, 54, 25], text: 'LOADING SHEET', on: st.step === 6 && st.anim });
+  return s + xrCallouts(LP_LABELS, [0, 92, 40, 600, 0, 36]); }
 let ui;
-function anim(st, name, secs, step, then){ st.anim = name; let t = 0; ui.animate(dt => { t += dt; const u = Math.min(1, t/secs); step(u); if (u >= 1){ st.anim = null; if (then) then(); return false; } return true; }); }
-function extend(st){ if (st.anim) return ui.flash('One moment'); if (st.frag >= N) return ui.flash('All lengths made'); ui.flash('Polymerase copies the template; wherever a dye ddNTP goes in, that chain stops. Over many cycles every length is made', 3600); anim(st, 'ext', 4, u => { st.frag = Math.max(st.frag, Math.round(u*N)); }); }
-function inject(st){ if (st.anim) return ui.flash('One moment'); if (!st.frag) return ui.flash('Make the fragments first'); st.inj = 1; st.mig = 0; ui.flash('Fragments injected at the negative end of the capillary', 2200); }
-function run(st){ if (st.anim) return ui.flash('One moment'); if (!st.inj) return ui.flash('Inject first'); st.read = 1; st.peaks = 0; ui.flash('Voltage on: DNA is negative and moves to +; shorter fragments move faster and reach the laser first', 3600);
-  anim(st, 'mig', 7, u => { st.mig = u; let n = 0; for (let k = 1; k <= st.frag; k++){ const sp = 1/(1 + (k - 1)*.12); if (c01(u*sp*1.6)*(WIN + 6 - CY0 - 4) + CY0 + 4 >= WIN) n = k; } st.peaks = Math.max(st.peaks, n); }); }
-ui = mountFigure({ fig:'00', turn:'full', title:'Sanger sequencing (sketch)', size:[BX, BY, 40], palette:'mustard', state:{ frag:0, inj:0, mig:0, read:0, peaks:0, anim:null }, scene,
-  buttons:[ { label:'Extend + terminate', onClick: st => extend(st) }, { label:'Inject', onClick: st => inject(st) }, { label:'Electrophoresis', onClick: st => run(st) },
-    { label:'Reset', onClick: st => { if (st.anim) return ui.flash('One moment'); Object.assign(st, { frag:0, inj:0, mig:0, read:0, peaks:0 }); } }, { label:'Cover', onClick: () => { location.href = 'index.html'; } } ],
-  stats: st => [ { label:'Fragments', value: st.frag }, { label:'Read', small:true, value: READ.slice(0, st.peaks).map(b => BASES[b]).join('') || '-' } ],
-  params:(st, q) => { for (const k of ['frag', 'inj', 'mig', 'read', 'peaks']) if (q.has(k)) st[k] = +q.get(k); } });
+function doStep(st, n){ if (st.anim) return ui.flash('One moment'); if (st.step >= n) return ui.flash(STEPS[n].name + ' is already done'); if (st.step < n - 1 && !(n === 2 && st.step === 0)) return ui.flash('First: ' + STEPS[st.step + 1].name);
+  st.step = n; st.anim = true; st.u = 0; ui.flash(STEPS[n].note, 4000); ui.animate(dt => { st.u = Math.min(1, st.u + dt/3.4); if (st.u >= 1){ st.anim = false; return false; } return true; }); }
+ui = mountFigure({
+  fig:'34', turn:'full', title:'Nanopore library prep (ligation, singleplex and native barcoding)', size:[BX, BY, 44], palette:'mint',
+  state:{ step:0, anim:false, u:0 }, scene,
+  buttons:[ ...[1, 2, 3, 4, 5, 6].map(n => ({ label: STEPS[n].name, onClick: st => doStep(st, n) })),
+    { label:'Reset', onClick: st => { if (st.anim) return ui.flash('One moment'); st.step = 0; st.u = 0; } },
+    { label:'Next: Nanopore flow cell', onClick: () => { location.href = 'flow-cell.html'; } },
+    { label:'SMRTbell prep', onClick: () => { location.href = '../pacbio/library-prep.html'; } }, { label:'Cover', onClick: () => { location.href = '../../index.html'; } } ],
+  stats: st => [ { label:'Step', value: `${st.step}/6` }, { label:'Route 1', value: st.step === 0 ? 'dsDNA' : STEPS[st.step].r[0], small:true }, { label:'Route 2', value: st.step === 0 ? 'dsDNA' : STEPS[st.step].r[1], small:true } ],
+  params:(st, q) => { if (q.has('step')) st.step = +q.get('step'); if (q.has('u')){ st.u = +q.get('u'); st.anim = true; } },
+});
 xrMount(() => ui, () => '', { labelsOnly:true });
 </script>
 <style>.draft{display:inline-block;margin-left:10px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;border:1.5px solid #e2483d;color:#e2483d;border-radius:999px;padding:2px 9px;vertical-align:middle}</style>

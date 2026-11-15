@@ -182,7 +182,7 @@ ui = mountFigure({
   scene,
   buttons:[ { label:'Load complex', onClick: st => loadZ(st) }, { label:'Next base', onClick: st => stepBase(st) }, { label:'Run / pause', onClick: st => toggleRun(st) }, { label:'Build HiFi read', onClick: st => buildHiFi(st) },
     { label:'Reset', onClick: st => { if (st.phase) return ui.flash('One moment'); st.stage = 0; st.pos = 0; st.running = false; st.hifi = false; st.q = 0; } },
-    { label:'Next: Revio', onClick: () => { location.href = 'pacbio-revio.html'; } }, { label:'SMRTbell prep', onClick: () => { location.href = 'pacbio-library-prep.html'; } }, { label:'Cover', onClick: () => { location.href = 'index.html'; } } ],
+    { label:'Next: Revio', onClick: () => { location.href = 'sequencer.html'; } }, { label:'SMRTbell prep', onClick: () => { location.href = 'library-prep.html'; } }, { label:'Cover', onClick: () => { location.href = '../../index.html'; } } ],
   stats: st => [ { label:'Passes', value: passes(st) }, { label:'Bases read', small:true, value: st.pos }, { label:'HiFi Q', small:true, value: st.hifi ? 'Q' + st.q : '-' } ],
   params:(st, q) => { for (const k of ['stage', 'pos', 'u', 'q']) if (q.has(k)) st[k] = +q.get(k); if (q.has('phase')) st.phase = q.get('phase'); if (q.has('base')) st.base = +q.get('base'); if (q.get('hifi') === '1') st.hifi = true; },
 });

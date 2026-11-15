@@ -10,23 +10,47 @@ Live site: https://w1shyoubest.github.io/dna-sequencing-technologies/
 
 Open any page in a browser; keep the files in one folder so the buttons that link the pages work. Drag to turn a figure, use the buttons in order, and switch on **Labels** (and **See-through** on the sequencers) to name the parts.
 
+## Folder layout
+
+```
+index.html                     the overview page (start here)
+1st-generation/
+  sanger/sanger.html           Sanger sequencing (preliminary sketch)
+2nd-generation/
+  library-prep.html            short-read library preparation, shared by both platforms
+  illumina/flow-cell.html      Illumina flow cell: bridge amplification, sequencing by synthesis
+  illumina/sequencer.html      Illumina-style benchtop sequencer
+  aviti/flow-cell.html         AVITI flow cell: rolling circle amplification, sequencing by avidity
+  aviti/sequencer.html         AVITI-style two-sided sequencer
+3rd-generation/                (drafts, under review)
+  pacbio/library-prep.html     SMRTbell library preparation
+  pacbio/smrt-cell.html        SMRT Cell and zero-mode waveguide
+  pacbio/sequencer.html        Revio-style sequencer
+  nanopore/library-prep.html   nanopore library preparation (ligation and native barcoding)
+  nanopore/flow-cell.html      flow cell priming and loading; a single pore reading
+  nanopore/devices.html        MinION and PromethION
+src/                           figure sources in the same layout, plus core.js
+```
+
+Each page in a platform folder is self-contained (the drawing engine is built in); keep the folders together so the navigation buttons between pages work.
+
 ## Pages
 
 | Page | What it shows |
 |---|---|
 | `index.html` | The cover: a map of the project. Library prep branches into the Illumina and AVITI routes, each ending at its own instrument. The bookends (DNA extraction, files to the cluster) and third-generation sequencing are marked as in preparation. |
-| `sanger.html` | Sanger sequencing, a first sketch: chain termination with dye ddNTPs, capillary electrophoresis past a laser window, the chromatogram. Draft. |
-| `library-prep.html` | How DNA becomes a library: fragment, end repair + A-tail, adapter ligation, clean-up, QC + pooling, denaturing. Two indexing routes side by side: index in the adapter (PCR-free) and index added by PCR. |
-| `flowcell-closeup.html` | Illumina: a flow cell and a patch of its surface at molecular scale. Hybridization to the P5/P7 lawn, first extension, bridge amplification into clusters, sequencing by synthesis with labelled blocked nucleotides, index reads, paired-end turnaround, and the files that come out. |
-| `sequencer-flowcell.html` | A benchtop Illumina-style sequencer you can load and run (2 x 150 = 300 cycles), with a see-through view of the fluidics and optics. Links across to the AVITI instrument. |
-| `aviti-sequencing.html` | AVITI: a library circle lands on a surface primer, rolling circle amplification builds a polony (one long strand of tandem copies), then sequencing by avidity: an avidite binds many copies at once, is imaged in four channels, washed off, and an unlabelled blocked nucleotide steps the strand on by one. The signal path from camera image to base call is shown, with a card comparing the two chemistries. |
-| `pacbio-library-prep.html` | **Draft.** PacBio HiFi library prep (SMRTbell prep kit 3.0), DNA only, starting from extracted HMW DNA (the kit's optional short-read eliminator acts on genomic DNA and is treated as part of extraction QC): shearing to 15-20 kb, repair + A-tailing, hairpin SMRTbell adapters on both ends (the insert becomes one closed single-stranded circle), nuclease treatment of anything with a free end, AMPure size selection + QC, then primer annealing and polymerase binding. |
-| `nanopore-library-prep.html` | **Draft.** Oxford Nanopore library prep by ligation, DNA only, two kits side by side: the Ligation Sequencing Kit (one sample: end-prep + nick repair, Y adapter with motor protein and tether straight on) and the Native Barcoding Kit (a barcode on each sample, pool, then the native adapter). Optional fragmentation or size selection first; clean-up with Long or Short Fragment Buffer; priming and loading. |
-| `nanopore-flow-cell.html` | **Draft.** A MinION flow cell (FLO-MIN114) with the full priming and loading protocol as nine steps: flow cell check, open the priming port, draw back 20-30 uL to clear the bubble, 800 uL priming mix, mix the 75 uL library, open SpotON and 200 uL more through the priming port, 75 uL dropwise onto SpotON, close and fit the light shield, start. Beside it one sensor well cut open: membrane, pore, electrode, the tethered library with its motor protein feeding a strand through, the ion current; cards show the flow cell check, the channel trace and the basecalls. |
-| `nanopore-device.html` | **Draft.** MinION Mk1D on a laptop and a PromethION 24 side by side, with a comparison card (flow cells, channels and minimum pores, output, run time, basecalling, size), insertion and run animations, and a see-through of the ASIC, Peltier and GPU compute. |
-| `pacbio-smrt-cell.html` | **Draft.** A SMRT Cell and one zero-mode waveguide cut open: the polymerase fixed to the glass floor, the lit zone at the bottom of the 70 nm hole, phospholinked nucleotides whose dye on the terminal phosphate flashes while held and leaves on incorporation, the real-time trace (pulse = base, gap = kinetics, long gap at 5mC), subreads from each pass round the circle, and the HiFi consensus read. |
-| `pacbio-revio.html` | **Draft.** A Revio-style instrument: SMRT Cell tray and sequencing plate on the work deck, a robot moving cells to four independent stages, lasers and a camera under each, onboard GPUs building HiFi reads and calling methylation; cells can start while others run. |
-| `aviti-sequencer.html` | The AVITI-style instrument, two-sided: side A and side B each have a door, a flow cell stage, a chilled reagent cartridge, a selector valve, a syringe pump and a wash bottle, and run independently (300 cycles each, as 2 x 150). One imaging module rides a rail between the two stages and serves one side at a time; a side that is ready to image while the other is being imaged waits. Links across to the Illumina instrument. |
+| `1st-generation/sanger/sanger.html` | Sanger sequencing, a first sketch: chain termination with dye ddNTPs, capillary electrophoresis past a laser window, the chromatogram. Draft. |
+| `2nd-generation/library-prep.html` | How DNA becomes a library: fragment, end repair + A-tail, adapter ligation, clean-up, QC + pooling, denaturing. Two indexing routes side by side: index in the adapter (PCR-free) and index added by PCR. |
+| `2nd-generation/illumina/flow-cell.html` | Illumina: a flow cell and a patch of its surface at molecular scale. Hybridization to the P5/P7 lawn, first extension, bridge amplification into clusters, sequencing by synthesis with labelled blocked nucleotides, index reads, paired-end turnaround, and the files that come out. |
+| `2nd-generation/illumina/sequencer.html` | A benchtop Illumina-style sequencer you can load and run (2 x 150 = 300 cycles), with a see-through view of the fluidics and optics. Links across to the AVITI instrument. |
+| `2nd-generation/aviti/flow-cell.html` | AVITI: a library circle lands on a surface primer, rolling circle amplification builds a polony (one long strand of tandem copies), then sequencing by avidity: an avidite binds many copies at once, is imaged in four channels, washed off, and an unlabelled blocked nucleotide steps the strand on by one. The signal path from camera image to base call is shown, with a card comparing the two chemistries. |
+| `2nd-generation/aviti/sequencer.html` | The AVITI-style instrument, two-sided: side A and side B each have a door, a flow cell stage, a chilled reagent cartridge, a selector valve, a syringe pump and a wash bottle, and run independently (300 cycles each, as 2 x 150). One imaging module rides a rail between the two stages and serves one side at a time; a side that is ready to image while the other is being imaged waits. Links across to the Illumina instrument. |
+| `3rd-generation/pacbio/library-prep.html` | **Draft.** PacBio HiFi library prep (SMRTbell prep kit 3.0), DNA only, starting from extracted HMW DNA (the kit's optional short-read eliminator acts on genomic DNA and is treated as part of extraction QC): shearing to 15-20 kb, repair + A-tailing, hairpin SMRTbell adapters on both ends (the insert becomes one closed single-stranded circle), nuclease treatment of anything with a free end, AMPure size selection + QC, then primer annealing and polymerase binding. |
+| `3rd-generation/pacbio/smrt-cell.html` | **Draft.** A SMRT Cell and one zero-mode waveguide cut open: the polymerase fixed to the glass floor, the lit zone at the bottom of the 70 nm hole, phospholinked nucleotides whose dye on the terminal phosphate flashes while held and leaves on incorporation, the real-time trace (pulse = base, gap = kinetics, long gap at 5mC), subreads from each pass round the circle, and the HiFi consensus read. |
+| `3rd-generation/pacbio/sequencer.html` | **Draft.** A Revio-style instrument: SMRT Cell tray and sequencing plate on the work deck, a robot moving cells to four independent stages, lasers and a camera under each, onboard GPUs building HiFi reads and calling methylation; cells can start while others run. |
+| `3rd-generation/nanopore/library-prep.html` | **Draft.** Oxford Nanopore library prep by ligation, DNA only, two kits side by side: the Ligation Sequencing Kit (one sample: end-prep + nick repair, Y adapter with motor protein and tether straight on) and the Native Barcoding Kit (a barcode on each sample, pool, then the native adapter). Optional fragmentation or size selection first; clean-up with Long or Short Fragment Buffer; priming and loading. |
+| `3rd-generation/nanopore/flow-cell.html` | **Draft.** A MinION flow cell (FLO-MIN114) with the full priming and loading protocol as nine steps: flow cell check, open the priming port, draw back 20-30 uL to clear the bubble, 800 uL priming mix, mix the 75 uL library, open SpotON and 200 uL more through the priming port, 75 uL dropwise onto SpotON, close and fit the light shield, start. Beside it one sensor well cut open: membrane, pore, electrode, the tethered library with its motor protein feeding a strand through, the ion current; cards show the flow cell check, the channel trace and the basecalls. |
+| `3rd-generation/nanopore/devices.html` | **Draft.** MinION Mk1D on a laptop and a PromethION 24 side by side, with a comparison card (flow cells, channels and minimum pores, output, run time, basecalling, size), insertion and run animations, and a see-through of the ASIC, Peltier and GPU compute. |
 
 ## Principles the figures try to make visible
 
@@ -53,6 +77,6 @@ These are study sketches, not manufacturer documentation. Strand lengths are sho
 
 **Illumina:** the flow cell is drawn with 8 lanes (the HiSeq layout; MiSeq has 1, NextSeq 4, NovaSeq 2 or 4) and the instrument is a generic benchtop design. Cartridge well names are by function, not a real well map.
 
-`src/` holds the figure sources; the pages at the top level are the built single-file versions.
+`src/` holds the figure sources in the same folder layout; the pages outside `src/` are the built single-file versions.
 
 Made with [Colorfigures](https://april-zhu.com/colorfigures) (MIT, see `LICENSE`).

@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Nanopore flow cell: priming, loading, reading</title>
+<title>Nanopore devices: MinION and PromethION</title>
 <style>.controls .ctl:nth-child(1),.controls .ctl:nth-child(2){display:none!important}</style><style>.mcap{display:none!important}@media (max-width:560px){.stat .v{font-size:20px!important}.stats{align-items:flex-end}}@media (min-width:561px){.vset{top:4px!important}#stats{top:var(--vset-h,44px)!important}}</style><style>@media (max-width:560px){body > header{display:none}}</style><script>window.FIG_A = () => innerWidth <= 560 ? 1.1 : .75;</script><script>window.LBL_U = () => { if (innerWidth > 560) return 0; const s = document.getElementById("fig"); return s && s.clientWidth && s.viewBox.baseVal.width ? s.viewBox.baseVal.width / s.clientWidth : 0; };</script></head><body>
 <script>
 /* ============================================================
@@ -647,193 +647,138 @@ function mountKeypad(spec){
 
 </script>
 <script>
-/* Oxford Nanopore MinION flow cell (R10.4.1, FLO-MIN114) on the bench, 1 unit = 1 mm; next to it one sensor well cut
-   open at nanometre scale; data cards in front. The loading steps follow ONT's protocol "Ligation sequencing gDNA V14
-   (SQK-LSK114)", section "Priming and loading the MinION and GridION Flow Cell", with its volumes:
-     priming mix per flow cell = 1170 uL Flow Cell Flush (FCF) + 5 uL BSA (50 mg/mL) + 30 uL Flow Cell Tether (FCT)
-     library mix = 37.5 uL Sequencing Buffer (SB) + 25.5 uL Library Beads (LIB) + 12 uL library = 75 uL
-   1. Flow cell check in MinKNOW: warranty minimum 800 pores (MinION/GridION), 5000 (PromethION).
-   2. Slide the priming port cover clockwise to open it.
-   3. P1000 set to 200 uL, tip in the priming port, dial to 220-230: draws back 20-30 uL to remove the air bubble.
-      Never more: the pore array must stay covered by buffer.
-   4. 800 uL priming mix through the priming port. Wait 5 minutes.
-   5. Make the 75 uL library mix; mix the beads immediately before use.
-   6. Lift the SpotON sample port cover. 200 uL priming mix through the PRIMING port (not SpotON).
-   7. 75 uL library onto the SpotON port DROPWISE: each drop must enter before the next.
-   8. Replace the SpotON cover (bung into the port), close the priming port, fit the light shield, close the lid, start.
-   READING (per well, one of 4 wells per channel; a mux scan picks the best pore in each channel; 512 channels):
-   a protein nanopore (CsgG-derived, R10.4.1 has two reader heads) sits in a synthetic membrane over an electrode well;
-   ~180 mV across the membrane drives an ionic current through the pore. The tether holds the library at the membrane;
-   the motor protein (helicase) on the adapter engages the pore, unwinds the duplex and ratchets ONE strand through, a
-   few hundred bases per second. The bases in the pore's narrowest part change the current; the trace is sampled at
-   about 5 kHz and basecalled (Dorado) in real time. Both strands can be read in turn if the second adapter follows. */
-const BX = 200, BY = 150, SZ = 8, KQ = Math.sqrt(1.5);
-const FC = { x0: 8, y0: 18, w: 32, l: 117, h: 10 };                 // flow cell: 117 x 32 x 10 mm
-const ZTOP = 2 + FC.h, ARR = { x0: FC.x0 + 8, y0: FC.y0 + 40, w: 16, l: 36 };  // sensor array window
-const PP = [FC.x0 + 16, FC.y0 + 104], SP = [ARR.x0 + 8, ARR.y0 + 30], WP = [[FC.x0 + 8, FC.y0 + 110], [FC.x0 + 24, FC.y0 + 110]];   // priming port, SpotON port, waste ports
-const BASES = 'ACGT', BCOL = ['#43c25c', '#4aa3ff', '#f4c430', '#e2483d'];
-const SHELL = matOf('#d9dde0'), DARK2 = matOf('#3d3935'), GLASS = matOf('#d9eef1'), PAPER = matOf('#fbfaf3'), MEM = matOf('#e9d8a6'), PORE = { l:'#9fd0c6', m:'#5fa89b', d:'#2d5d55' }, MOTOR = { l:'#f3a6bb', m:'#d8869c', d:'#4b2430' };
-const ADP = '#17a398', TETH = '#e0409a', PRIM = '#55504a', TPLC = '#8a8f94', TPL2 = '#c3c7ca';
-const lerp = (a, b, t) => a.map((v, i) => v + (b[i] - v)*t), c01 = v => Math.max(0, Math.min(1, v)), add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
-const mu = w => `style="stroke-width:${w.toFixed(2)}"`;
-const bead = (p, r, col, w = .5, sc = INK) => { const q = P(...p); return `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${f(r*KQ)}" fill="${col}" stroke="${sc}" stroke-width="${w}"/>`; };
-const note = (p, str, col = INK, size = 3) => { const q = P(...p); return `<text x="${f(q[0])}" y="${f(q[1])}" font-size="${size}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="800" fill="${col}" stroke="#f2efe7" style="stroke-width:.9;paint-order:stroke">${str}</text>`; };
+/* Two Oxford Nanopore devices on one bench, 1 unit = 1 cm: a MinION Mk1D (from ONT's product page: 55 x 13 x 125 mm,
+   130 g, USB-C to a laptop, one flow cell, Peltier temperature control, up to 72 h runs) and a PromethION 24
+   (24 independent PromethION flow cells, 72 h runs, onboard GPUs for real-time basecalling; cabinet size approximated).
+   Flow cells: MinION R10.4.1 FLO-MIN114, 512 channels / 2048 wells, warranty minimum 800 pores (ONT protocol);
+   PromethION FLO-PRO114M, 2675 channels (widely quoted), warranty minimum 5000 pores (ONT protocol), about six times
+   the capacity of a MinION flow cell (ONT). Same pore, same chemistry, same library: the difference is scale and compute.
+   The MinION basecalls on the host laptop or GPU; the PromethION 24 has its own GPU compute tower (drawn as one box). */
+const BX = 120, BY = 110, MI = { x0: 60, y0: 70, w: 5.5, l: 12.5, h: 1.3 }, PR = { x0: 10, y0: 8, w: 40, d: 45, h: 44 };
+const SHELL = matOf('#d9dde0'), DARK2 = matOf('#3d3935'), LIDM = matOf('#f1ede0'), PCB = matOf('#3f8f5a'), GLASS = matOf('#d9eef1'), PAPER = matOf('#fbfaf3'), FCM = matOf('#cfd4d8');
+const mu = w => `style="stroke-width:${w.toFixed(2)}"`, c01 = v => Math.max(0, Math.min(1, v));
 const flat = (x, y, z, str, size, col = INK) => `<text transform="${txM(P(x, y, z), Dv(0,-1,0), Dv(1,0,0))}" font-size="${size}" fill="${col}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="800" letter-spacing=".04em">${str}</text>`;
-const seg = (pts, col, w, op = 1) => `<path d="${pd(pts, false)}" fill="none" stroke="${col}" ${mu(w)} stroke-linecap="round" stroke-linejoin="round" opacity="${f(op)}"/>`;
-function chain(pts, cols, rib = PRIM, r = 1.1){ if (!pts.length) return ''; const d = pd(pts, false);
-  return (pts.length > 1 ? `<path d="${d}" fill="none" stroke="${INK}" ${mu(1.7)} stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${rib}" ${mu(1.2)} stroke-linecap="round" stroke-linejoin="round"/>` : '') + pts.map((p, i) => [depthOf(p), bead(p, r, cols[i], 1, rib)]).sort((a, b) => a[0] - b[0]).map(x => x[1]).join(''); }
-function clampAt(c, m, R){ const pts = []; for (let i = 0; i <= 24; i++){ const t = (48 + 264*i/24)*Math.PI/180; pts.push(P(...[0, 1, 2].map(j => c[j] + CAM_R[j]*R*.58*Math.sin(t) + CAM_U[j]*R*.58*Math.cos(t)))); }
-  const d = 'M' + pts.map(q => f(q[0]) + ' ' + f(q[1])).join('L'), st = (col, w) => `<path d="${d}" fill="none" stroke="${col}" style="stroke-width:${(w*R*KQ).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`;
-  return `<g opacity=".85">${st(INK, .56)}${st(m.m, .5)}${st(m.l, .2)}</g>`; }
+const bbOf = pts => [[0,1,2].map(i => Math.min(...pts.map(p => p[i]))), [0,1,2].map(i => Math.max(...pts.map(p => p[i])))];
+function sqPrismY(prof, y0, y1, m, w = 1){ const A = prof.map(([x, z]) => [x, y0, z]), B = prof.map(([x, z]) => [x, y1, z]); let s = loft(A, B, n => toneI(n, m));
+  if (vis([0,1,0])) s += shape(B, toneI([0,1,0], m), .6); else if (vis([0,-1,0])) s += shape(A, toneI([0,-1,0], m), .6);
+  return s + ink(pd([A[0], B[0], B[3], A[3]]), w*.7) + ink(pd([A[1], B[1], B[2], A[2]]), w*.7) + hullInk([...A, ...B], w + .8); }
 
-/* ---------- the flow cell ---------- */
-const STEPS = ['check', 'open', 'draw', 'prime1', 'libmix', 'prime2', 'load', 'close', 'run'];
-const NAMES = { check:'Flow cell check', open:'Open priming port', draw:'Draw back 20-30 uL', prime1:'Prime 800 uL', libmix:'Mix library (75 uL)', prime2:'Open SpotON + 200 uL', load:'Load 75 uL dropwise', close:'Close + light shield', run:'Start run' };
-const NOTES = { check:'MinKNOW counts the pores that respond: at least 800 for a MinION flow cell (5000 PromethION); here 1420',
-  open:'Slide the priming port cover clockwise. The SpotON cover stays shut for now',
-  draw:'P1000 set to 200 uL, tip in the priming port, turn the dial to 220-230: 20-30 uL comes back and the air bubble with it. Never more: the array must stay covered',
-  prime1:'800 uL of priming mix (Flow Cell Flush + BSA + Flow Cell Tether) through the priming port, no bubbles. Wait 5 minutes',
-  libmix:'In a fresh tube: 37.5 uL Sequencing Buffer + 25.5 uL Library Beads (mixed right before use) + 12 uL library = 75 uL',
-  prime2:'Lift the SpotON sample port cover, then 200 uL more priming mix through the PRIMING port, not the SpotON port',
-  load:'75 uL of library onto the SpotON port one drop at a time; let each drop be drawn in before the next',
-  close:'Replace the SpotON cover so its bung seats in the port, close the priming port, fit the light shield, close the lid',
-  run:'Set up the run in MinKNOW. The tether docks the molecules on the membrane; motors engage pores; reads start in minutes' };
-const done = (st, k) => STEPS.indexOf(k) < st.i;
-function flowCell(st, m){
-  const F = FC, z1 = ZTOP, items = [], put = (at, svg, box2) => items.push({ at, svg, box: box2 });
-  let s = box(F.x0, F.y0, 2, F.x0 + F.w, F.y0 + F.l, z1, SHELL, toneI, 1.2);
-  s += shape(on(PZ(z1 + .03), rrUV(F.x0 + 2, F.y0 + 2, F.x0 + F.w - 2, F.y0 + F.l - 2, 2)), '#cfd4d8', .6);
-  // sensor array window: the membrane over 512 channels (2048 wells), seen through the top; wet once primed
-  const wet = done(st, 'prime1'), lit = st.running;
-  s += shape(on(PZ(z1 + .05), rectUV(ARR.x0, ARR.y0, ARR.x0 + ARR.w, ARR.y0 + ARR.l)), wet ? '#b9c7d8' : '#9aa5b0', .9);
-  let g = ''; for (let i = 0; i < 16; i++) for (let j = 0; j < 32; j++){ const X = ARR.x0 + .5 + i*1, Y = ARR.y0 + .56 + j*1.125; g += pd(on(PZ(z1 + .06), rectUV(X - .3, Y - .35, X + .3, Y + .35))); }
-  s += fill(g, lit ? '#43c25c' : wet ? '#7f8ea0' : '#6b7580', lit ? 'opacity=".8"' : 'opacity=".6"');
-  if (st.bubble > 0) s += fill(pd(on(PZ(z1 + .08), ellUV(ARR.x0 + 9, ARR.y0 + 8, 3.2*st.bubble, 2.2*st.bubble, 14))), '#ffffff', 'opacity=".85"') + ink(pd(on(PZ(z1 + .08), ellUV(ARR.x0 + 9, ARR.y0 + 8, 3.2*st.bubble, 2.2*st.bubble, 14))), .7);
-  s += flat(F.x0 + 29, F.y0 + 58, z1 + .05, 'FLO-MIN114  R10.4.1', 2.2, '#5f6b70') + flat(F.x0 + 4, F.y0 + 58, z1 + .05, 'SENSOR ARRAY: 2048 WELLS, 512 CHANNELS', 1.5, '#5f6b70');
-  // waste ports (two small holes), priming port with rotating cover, SpotON port with hinged cover
-  for (const w of WP) s += shape(on(PZ(z1 + .05), ellUV(w[0], w[1], 1.2, 1.2, 10)), '#2b2523', .5);
-  s += flat(WP[1][0] + 7, WP[1][1], z1 + .05, 'WASTE 1   WASTE 2', 1.4, '#5f6b70');
-  put([PP[0], PP[1], z1], shape(on(PZ(z1 + .05), ellUV(PP[0], PP[1], 3.2, 3.2, 16)), '#8f989b', .8) + shape(on(PZ(z1 + .06), ellUV(PP[0], PP[1], 1.6, 1.6, 12)), done(st, 'open') && !done(st, 'close') ? '#2b2523' : '#8f989b', .5), [[PP[0] - 3.3, PP[1] - 3.3, z1], [PP[0] + 3.3, PP[1] + 3.3, z1 + .1]]);
-  { const a = st.ppCover*Math.PI/2.2, c = [PP[0] + 3.4*Math.sin(a), PP[1] - 3.4*(1 - Math.cos(a))]; // the cover slides clockwise around a pivot
-    put([c[0], c[1], z1 + .8], cyl(c[0], c[1], z1 + .1, z1 + 1.2, 3.4, DARK2, toneI, .8, 16) + (vis([0,0,1]) ? ink(pd([[c[0] - 2, c[1], z1 + 1.22], [c[0] + 2, c[1], z1 + 1.22]], false), .9) : ''), [[c[0] - 3.5, c[1] - 3.5, z1 + .1], [c[0] + 3.5, c[1] + 3.5, z1 + 1.3]]); }
-  put([SP[0], SP[1], z1], shape(on(PZ(z1 + .07), ellUV(SP[0], SP[1], 2.2, 2.2, 14)), '#8f989b', .7) + shape(on(PZ(z1 + .08), ellUV(SP[0], SP[1], 1.1, 1.1, 10)), '#2b2523', .5), [[SP[0] - 2.3, SP[1] - 2.3, z1], [SP[0] + 2.3, SP[1] + 2.3, z1 + .1]]);
-  { const a = st.spCover*1.9, h = [SP[0], SP[1] + 2.4];   // hinged flap lifts toward +y
-    const pr = [[0, 0], [0, 4.8], [1.2, 4.8], [1.2, 0]].map(([dz, dy]) => [h[1] - dy*Math.cos(a) + dz*Math.sin(a), z1 + .1 + dy*Math.sin(a) + dz*Math.cos(a)]);
-    const A = pr.map(([y, z]) => [SP[0] - 2.4, y, z]), B = pr.map(([y, z]) => [SP[0] + 2.4, y, z]);
-    put([SP[0], SP[1] + 1, z1 + 1], loft(A, B, n => toneI(n, DARK2)) + (vis([0,1,0]) ? shape(B, toneI([0,1,0], DARK2), .6) : vis([0,-1,0]) ? shape(A, toneI([0,-1,0], DARK2), .6) : '') + hullInk([...A, ...B], 1.2), [[SP[0] - 2.5, SP[1] - 2.6, z1 + .1], [SP[0] + 2.5, SP[1] + 2.6, z1 + 5]]); }
-  s += flat(PP[0] + 7, PP[1] - 2, z1 + .05, 'PRIMING PORT', 1.5, '#5f6b70') + flat(SP[0] + 6, SP[1], z1 + .05, 'SpotON', 1.6, '#5f6b70');
-  // light shield: slides on at the end
-  if (st.shield > 0){ const dy = 40*(1 - st.shield); put([F.x0 + F.w/2, F.y0 + 60 + dy, z1 + 2.5], box(F.x0 + 1, F.y0 + 30 + dy, z1 + 1.4, F.x0 + F.w - 1, F.y0 + 100 + dy, z1 + 2.6, DARK2, toneI, 1) + flat(F.x0 + F.w/2, F.y0 + 65 + dy, z1 + 2.63, 'LIGHT SHIELD', 2, '#f2efe7'), [[F.x0, F.y0 + 30 + dy, z1 + 1.4], [F.x0 + F.w, F.y0 + 100 + dy, z1 + 2.7]]); }
-  // the pipette, when a step uses one: a tip above the port in use
-  if (st.pip){ const p = st.pip, tip = [p.x, p.y, z1 + .4 + 14*(1 - p.in)], top = [p.x, p.y, tip[2] + 26];
-    let pip = rod(tip, add(tip, [0, 0, 9]), .45, matOf('#eef0f0'), toneI, .6, 2.4) + rod(add(tip, [0, 0, 9]), top, 2.4, matOf('#eef0f0'), toneI, .8) + rod(top, add(top, [0, 0, 8]), 3.2, matOf(p.col), toneI, .9);
-    if (p.liq > 0) pip += `<g opacity=".8">${rod(add(tip, [0, 0, .6]), add(tip, [0, 0, .6 + 7*p.liq]), .5, matOf(p.lcol), toneI, .3, 1.7)}</g>`;
-    if (p.drop) pip += bead([p.x, p.y, tip[2] - .3 - 3*p.drop], 1.1*(1 - .3*p.drop), p.lcol, .5);
-    put([p.x, p.y, top[2]], pip, [[p.x - 3.3, p.y - 3.3, tip[2]], [p.x + 3.3, p.y + 3.3, top[2] + 8]]); }
-  put([F.x0 + F.w/2, F.y0 + F.l/2, 6], s, [[F.x0, F.y0, 2], [F.x0 + F.w, F.y0 + F.l, z1 + .1]]);
-  // tubes beside the flow cell: priming mix and library mix, levels falling as they are used
-  const tube = (x, y, lvl, col, lab2) => { let t = (lvl > .02 ? cyl(x, y, 2.3, 2.3 + 10*lvl, 2.3, matOf(col), toneI, .3, 14) : '') + `<g opacity=".5">${cyl(x, y, 2, 14, 2.7, CLEAR, toneI, .8, 16)}</g>`; put([x, y, 8], t, [[x - 2.8, y - 2.8, 2], [x + 2.8, y + 2.8, 14.2]]); return flat(x, y - 5.5, 2.05, lab2, 1.6, '#5f6b70'); };
-  s = tube(F.x0 + 44, F.y0 + 108, st.primeLvl, '#cfe6ff', 'PRIMING MIX 1205 uL') + tube(F.x0 + 44, F.y0 + 92, st.libLvl, '#f3a6bb', st.libMixed ? 'LIBRARY MIX 75 uL' : 'LIBRARY 12 uL');
-  put([F.x0 + 44, F.y0 + 100, 2.05], s, [[F.x0 + 40, F.y0 + 85, 2], [F.x0 + 48, F.y0 + 115, 2.1]]);
+/* ---------- MinION Mk1D: a stick with a hinged lid; the flow cell slides in under the lid ---------- */
+function minion(st, m, k){
+  const M = MI, z0 = 2, z1 = z0 + M.h, items = [], put = (at, svg, box2) => items.push({ at, svg, box: box2 });
+  let s = box(M.x0, M.y0, z0, M.x0 + M.w, M.y0 + M.l, z1, SHELL, toneI, 1.1);
+  s += shape(on(PZ(z1 + .03), rrUV(M.x0 + .5, M.y0 + 1, M.x0 + M.w - .5, M.y0 + 9.5, .4)), '#2b2523', .6);           // the flow cell bay
+  s += flat(M.x0 + M.w/2, M.y0 + 11, z1 + .03, 'MinION Mk1D', 1.1, '#5f6b70');
+  // USB-C lead out of the back end, to the laptop
+  s += box(M.x0 + M.w/2 - .6, M.y0 - 1.2, z0 + .3, M.x0 + M.w/2 + .6, M.y0, z0 + .9, DARK2, toneI, .5);
+  const cord = [[M.x0 + M.w/2, M.y0 - 1.2, z0 + .6], [M.x0 + M.w/2, M.y0 - 6, z0 + .3], [M.x0 + M.w/2 + 6, M.y0 - 12, z0 + .3], [M.x0 + 14, M.y0 - 14, z0 + .3]];
+  s += `<path d="${pd(cord, false)}" fill="none" stroke="${INK}" ${mu(1.2)} stroke-linecap="round" stroke-linejoin="round"/><path d="${pd(cord, false)}" fill="none" stroke="${DARK2.m}" ${mu(.7)} stroke-linecap="round" stroke-linejoin="round"/>`;
+  put([M.x0 + M.w/2, M.y0 + M.l/2, z0 + .6], s, [[M.x0, M.y0 - 14, z0], [M.x0 + 14, M.y0 + M.l, z1 + .05]]);
+  // the MinION flow cell, on the bench or in the bay
+  const t = st.fcT, p = [M.x0 + M.w/2 - 1.6 + (1.6 - 0)*0, M.y0 + 1 + 8*(1 - t) + 10*(1 - t)*0, z1 + .05], fx = M.x0 + .9, fy = M.y0 + 1 + 14*(1 - t), fz = z1 + .05 + 3*Math.sin(Math.PI*t)*0;
+  const fcell = box(fx, fy, fz, fx + 3.2, fy + 8.2, fz + .7, FCM, toneI, .7) + shape(on(PZ(fz + .73), rectUV(fx + .8, fy + 2.5, fx + 2.4, fy + 5.5)), st.run ? '#43c25c' : '#7f8ea0', .4) + shape(on(PZ(fz + .73), ellUV(fx + 1.6, fy + 7.2, .35, .35, 8)), '#3d3935', .3);
+  put([fx + 1.6, fy + 4, fz + .4], fcell, [[fx, fy, fz], [fx + 3.2, fy + 8.2, fz + .8]]);
+  // the lid, hinged at the back end (y = y0), opening upward
+  { const a = st.lid*75*Math.PI/180, pr = [[0, 0], [10, 0], [10, .35], [0, .35]].map(([dy, dz]) => [M.y0 + .3 + dy*Math.cos(a) - dz*Math.sin(a), z1 + .1 + dy*Math.sin(a) + dz*Math.cos(a)]);
+    const A = pr.map(([y, z]) => [M.x0 + .2, y, z]), B = pr.map(([y, z]) => [M.x0 + M.w - .2, y, z]);
+    let lid = loft(A, B, n => toneI(n, LIDM)) + (vis([1,0,0]) ? shape(B, toneI([1,0,0], LIDM), .6) : vis([-1,0,0]) ? shape(A, toneI([-1,0,0], LIDM), .6) : '') + hullInk([...A, ...B], 1.1);
+    if (st.lid < .05) lid += flat(M.x0 + M.w/2, M.y0 + 5, z1 + .5, 'OXFORD NANOPORE', .8, '#857d6e');
+    put([M.x0 + M.w/2, M.y0 + 5, z1 + 3], (k > 0 ? `<g opacity="${f(1 - .8*k)}">${lid}</g>` : lid), bbOf([...A, ...B])); }
+  // laptop running MinKNOW
+  const L = { x0: M.x0 + 12, y0: M.y0 - 32, w: 22, d: 15 };
+  let lap = box(L.x0, L.y0, 2, L.x0 + L.w, L.y0 + L.d, 3.2, SHELL, toneI, 1) + shape(on(PZ(3.23), rectUV(L.x0 + 2, L.y0 + 2, L.x0 + L.w - 2, L.y0 + L.d - 3)), '#4a5057', .4);
+  const scr = [[L.x0, L.y0, 3.2], [L.x0 + L.w, L.y0, 3.2], [L.x0 + L.w, L.y0 - 6, 16], [L.x0, L.y0 - 6, 16]];
+  lap += shape(scr, '#3d3935', 1) + shape(scr.map((p, i) => [p[0] + (i === 0 || i === 3 ? 1 : -1), p[1] + (i < 2 ? -.4 : .4), p[2] + (i < 2 ? .8 : -.8)]), '#1d2a26', .5);
+  if (facing([0,-1,0]) || facing([0,0,1])){ const T = (dz, str, size, col = '#8af0ae') => { const q = P(L.x0 + L.w/2, L.y0 - 6*(dz/13), 3.2 + dz); return `<text transform="${txM(q, Dv(1,0,0), Dv(0, .42, -.9))}" font-size="${size}" fill="${col}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="700">${str}</text>`; };
+    lap += T(10.5, 'MinKNOW', 1.6) + T(8, st.run ? 'SEQUENCING  . 1392 PORES ACTIVE' : st.fc ? 'FLOW CELL CHECK: 1420 PORES' : 'NO FLOW CELL', 1.1, '#5fae82') + T(5.8, st.run ? `${(st.gb).toFixed(1)} Gb  .  READ N50 18 kb` : 'DORADO BASECALLING ON THIS LAPTOP', 1.1, '#5fae82'); }
+  put([L.x0 + L.w/2, L.y0 + 4, 6], lap, [[L.x0, L.y0 - 6, 2], [L.x0 + L.w, L.y0 + L.d, 16.2]]);
   return items;
 }
+function minionMech(st){ const M = MI, z0 = 2; const parts = [];
+  parts.push({ box: [[M.x0 + .6, M.y0 + 1, z0 + .2], [M.x0 + M.w - .6, M.y0 + 9.8, z0 + .5]], svg: box(M.x0 + .6, M.y0 + 1, z0 + .2, M.x0 + M.w - .6, M.y0 + 9.8, z0 + .5, PCB, toneI, .5) });
+  parts.push({ box: [[M.x0 + 1.4, M.y0 + 3, z0 + .5], [M.x0 + M.w - 1.4, M.y0 + 7, z0 + .75]], svg: box(M.x0 + 1.4, M.y0 + 3, z0 + .5, M.x0 + M.w - 1.4, M.y0 + 7, z0 + .75, DARK2, toneI, .4) });   // ASIC under the array
+  parts.push({ box: [[M.x0 + 1, M.y0 + 1.2, z0 + .75], [M.x0 + M.w - 1, M.y0 + 9.6, z0 + 1.05]], svg: box(M.x0 + 1, M.y0 + 1.2, z0 + .75, M.x0 + M.w - 1, M.y0 + 9.6, z0 + 1.05, matOf('#b8bfc2'), toneI, .4) });   // Peltier + heat spreader
+  parts.push({ box: [[M.x0 + .8, M.y0 + 10.2, z0 + .3], [M.x0 + M.w - .8, M.y0 + 11.8, z0 + 1.1]], svg: box(M.x0 + .8, M.y0 + 10.2, z0 + .3, M.x0 + M.w - .8, M.y0 + 11.8, z0 + 1.1, DARK2, toneI, .4) });   // fan
+  return sqSort(parts); }
+function sqSort(parts){ parts = parts.filter(Boolean); const n = parts.length, scr = parts.map(p => { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const x of [p.box[0][0], p.box[1][0]]) for (const y of [p.box[0][1], p.box[1][1]]) for (const z of [p.box[0][2], p.box[1][2]]){ const q = P(x, y, z); x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); } return [x0, y0, x1, y1]; });
+  const dep = parts.map(p => depthOf(boxMid(p.box))), after = parts.map(() => []), need = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++){ const a = scr[i], b = scr[j]; if (a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]) continue; const o = sepOrder(parts[i], parts[j]); if (o < 0){ after[i].push(j); need[j]++; } else if (o > 0){ after[j].push(i); need[i]++; } }
+  const done = new Array(n).fill(false); let out = ''; for (let c = 0; c < n; c++){ let best = -1, free = false; for (let i = 0; i < n; i++){ if (done[i]) continue; const fr = need[i] === 0; if (best < 0 || (fr && !free) || (fr === free && dep[i] < dep[best])){ best = i; free = fr; } } done[best] = true; out += parts[best].svg; for (const j of after[best]) need[j]--; } return out; }
 
-/* ---------- one well, cut open: membrane, pore, electrode, the molecule ---------- */
-const WX0 = 72, WX1 = 150, WY0 = 24, WY1 = 118, ZW = SZ + 22, ZMEM = ZW + 10;   // well block: electrode floor at ZW, membrane at ZMEM
-const PC = [WX1 - 36, (WY0 + WY1)/2];
-function well(st, m){
-  const items = [], put = (at, svg, box2) => items.push({ at, svg, box: box2 }), run = st.running, docked = done(st, 'load');
-  // support with the well (a cup) and the electrode at its bottom; membrane spanning the top; buffer above
-  put([(WX0 + WX1)/2, (WY0 + WY1)/2, SZ + 6], box(WX0, WY0, SZ, WX1, WY1, ZW, GLASS, toneI, 1.2), [[WX0, WY0, SZ], [WX1, WY1, ZW]]);
-  put([PC[0], PC[1], ZW + .2], shape(on(PZ(ZW + .1), ellUV(PC[0], PC[1], 20, 20, 24)), '#b8893a', 1) + flat(PC[0], PC[1] - 9, ZW + .12, 'ELECTRODE', 2.2, '#5a3d12'), [[PC[0] - 20, PC[1] - 20, ZW], [PC[0] + 20, PC[1] + 20, ZW + .2]]);
-  // membrane: the far half (a thin slab with a hole), so the near side is open
-  const memFar = box(WX0, WY0, ZMEM - .6, PC[0] - 4, WY1, ZMEM, MEM, toneI, .8) + box(PC[0] - 4, WY0, ZMEM - .6, WX1, PC[1] - 4, ZMEM, MEM, toneI, .8);
-  put([WX0 + 20, WY0 + 20, ZMEM], memFar, [[WX0, WY0, ZMEM - .6], [PC[0] - 4, WY1, ZMEM]]);
-  put([WX1 - 10, WY0 + 10, ZMEM], box(PC[0] - 4, WY0, ZMEM - .6, WX1, PC[1] - 4, ZMEM, MEM, toneI, .8), [[PC[0] - 4, WY0, ZMEM - .6], [WX1, PC[1] - 4, ZMEM]]);
-  // the pore: a squat barrel through the membrane, with a narrow bore (the reader head)
-  const pore = cyl(PC[0], PC[1], ZMEM - 2.2, ZMEM + 2.4, 4.2, PORE, toneI, 1, 20) + fill(pd(on(PZ(ZMEM + 2.43), ellUV(PC[0], PC[1], 1.1, 1.1, 10))), '#1d2a26');
-  put([PC[0], PC[1], ZMEM], pore, [[PC[0] - 4.3, PC[1] - 4.3, ZMEM - 2.2], [PC[0] + 4.3, PC[1] + 4.3, ZMEM + 2.5]]);
-  // the library molecule: tethered to the membrane, motor on the pore, strand threading down (when running)
-  if (docked){ const adv = run ? st.adv : 0, base = PC;
-    const motor = [base[0], base[1], ZMEM + 4.2];
-    const dsPts = Array.from({length:14}, (_, i) => [base[0] - 2.2 - i*2.4, base[1] + 6 + i*2.6, ZMEM + 5.5 + i*.35]);     // the duplex still to come, lying along the membrane
-    const ssDown = Array.from({length:7}, (_, i) => [base[0], base[1], ZMEM + 1.6 - i*2.2]);                             // the strand already through, below the membrane
-    const tetherPt = [base[0] - 2.2 - 14*2.4, base[1] + 6 + 14*2.6, ZMEM + .2];
-    let mol = seg([dsPts[dsPts.length - 1], tetherPt], TETH, 1.6) + bead(tetherPt, 1.3, TETH, .8);
-    mol += chain(dsPts, dsPts.map((_, i) => BCOL[(i + adv) % 4]), TPLC, 1.1) + chain(dsPts.map(p => add(p, [1.2, -1.2, -.4])), dsPts.map((_, i) => BCOL[3 - (i + adv) % 4]), TPL2, 1.1);
-    mol += chain(ssDown, ssDown.map((_, i) => BCOL[(adv + 20 - i) % 4]), TPLC, 1.05);
-    mol += clampAt(motor, MOTOR, 5);
-    put([base[0] - 10, base[1] + 14, ZMEM + 6], mol, [[base[0] - 40, base[1] - 2, ZMEM - 14], [base[0] + 4, base[1] + 48, ZMEM + 8]]);
-    if (run){ const q = P(PC[0], PC[1], ZMEM + .1); put([PC[0], PC[1], ZMEM + 6.5], `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${f(7*KQ)}" fill="${BCOL[adv % 4]}" opacity=".25"/>`, [[PC[0] - 7, PC[1] - 7, ZMEM + 6], [PC[0] + 7, PC[1] + 7, ZMEM + 7]]); } }
-  // ion current arrows: through the pore into the well
-  if (run) for (let i = 0; i < 3; i++){ const z = ZMEM - 3 - i*4.5, p = [PC[0] + 7, PC[1] - 6, z]; put(p, seg([add(p, [0, 0, 2.2]), p], '#4aa3ff', 1.2) + bead(p, .7, '#4aa3ff', .4), [[p[0] - 1, p[1] - 1, p[2] - .1], [p[0] + 1, p[1] + 1, p[2] + 2.3]]); }
+/* ---------- PromethION 24: a cabinet with a 6 x 4 field of flow cell positions under a lid, and a compute tower ---------- */
+const OUTP = () => rrUV(PR.y0, 2, PR.y0 + PR.d, 2 + PR.h, 2);
+function promethion(st, m, k){
+  const X0 = PR.x0, X1 = PR.x0 + PR.w, items = [], put = (at, svg, box2) => items.push({ at, svg, box: box2 });
+  let s = (facing([1,0,0]) ? fill(pd(on(PX(X1), OUTP())), tone([1,0,0], m)) : '') + (facing([-1,0,0]) ? fill(pd(on(PX(X0), OUTP())), tone([-1,0,0], m)) : '') + extrude(OUTP(), X0, X1, m);
+  if (facing([1,0,0])){ s += shape(on(PX(X1 + .12), rrUV(PR.y0 + 3, 20, PR.y0 + PR.d - 3, 40, 1.2)), '#3d3935', .9) + fill(pd(on(PX(X1 + .2), rectUV(PR.y0 + 4, 21, PR.y0 + PR.d - 4, 39))), '#1d2a26');
+    const T = (y, z, str, size, col = '#8af0ae') => tx(X1 + .3, y, z, str, size, col, 700), act = st.p24.filter(Boolean).length;
+    s += T(PR.y0 + PR.d/2, 36.5, 'PromethION 24 . MinKNOW', 1.5) + T(PR.y0 + PR.d/2, 33.5, act ? `${act} FLOW CELLS RUNNING` : 'LOAD FLOW CELLS', 1.3, '#5fae82') + T(PR.y0 + PR.d/2, 30.5, act ? `${(st.gbP).toFixed(0)} Gb SO FAR . 72 h RUNS` : 'EACH POSITION INDEPENDENT', 1.2, '#5fae82') + T(PR.y0 + PR.d/2, 27.5, 'GPU BASECALLING ONBOARD', 1.2, '#5fae82');
+    for (let i = 0; i < 24; i++){ const y = PR.y0 + 6 + (i % 6)*5.6, z = 15 - ((i / 6) | 0)*3.2; s += shape(on(PX(X1 + .12), rrUV(y, z, y + 4, z + 1.6, .4)), st.p24[i] ? '#43c25c' : '#c9c1b2', .4); }
+    s += tx(X1 + .3, PR.y0 + PR.d/2, 4, '24 POSITIONS . 1 FLOW CELL EACH', 1.1, '#857d6e', 700); }
+  if (facing([-1,0,0])){ let v = ''; for (let z = 6; z <= 40; z += 2.5) v += pd([[X0 - .2, PR.y0 + 5, z], [X0 - .2, PR.y0 + PR.d - 5, z]], false); s += `<path d="${v}" fill="none" stroke="${INK}" stroke-width="1.1" opacity=".7"/>`; }
+  if (facing([0,1,0])) s += txY((X0 + X1)/2, PR.y0 + PR.d + .2, 25, 'PromethION 24', 3.4, mix(tone([0,1,0], m), '#000000', .45), 800);
+  s += hullInk([...on(PX(X0), OUTP()), ...on(PX(X1), OUTP())], 2.6);
+  if (k > 0) s = xrGhost(s, '', k, OUTP(), X0, X1, m) + `<g opacity="${f(k)}">${promMech(st)}</g>`;
+  put([(X0 + X1)/2, PR.y0 + PR.d/2, 20], s, [[X0, PR.y0, 2], [X1, PR.y0 + PR.d, 2 + PR.h]]);
+  // top: the lid over the flow cell field; flow cells visible when open
+  const zt = 2 + PR.h; let top = '';
+  for (let i = 0; i < 24; i++){ const x = X0 + 5 + ((i / 6) | 0)*7.5, y = PR.y0 + 4 + (i % 6)*6.4; top += shape(on(PZ(zt + .03), rrUV(x, y, x + 5.5, y + 5, .5)), '#3d3935', .5);
+    if (st.p24[i]) top += box(x + .4, y + .4, zt + .03, x + 5.1, y + 4.6, zt + .6, FCM, toneI, .4) + shape(on(PZ(zt + .64), rectUV(x + 1.5, y + 1.3, x + 4, y + 3.7)), st.run24 ? '#43c25c' : '#7f8ea0', .3); }
+  put([(X0 + X1)/2, PR.y0 + PR.d/2, zt + .3], top, [[X0, PR.y0, zt], [X1, PR.y0 + PR.d, zt + .7]]);
+  { const a = st.lid24*70*Math.PI/180, pr = [[0, 0], [PR.w - 2, 0], [PR.w - 2, .8], [0, .8]].map(([dx, dz]) => [X0 + 1 + dx*Math.cos(a) - dz*Math.sin(a), zt + .8 + dx*Math.sin(a) + dz*Math.cos(a)]);   // hinged at the back (x = X0)
+    put([(X0 + X1)/2, PR.y0 + PR.d/2, zt + 4], (k > 0 ? `<g opacity="${f(1 - .8*k)}">` : '') + sqPrismY(pr, PR.y0 + 1, PR.y0 + PR.d - 1, LIDM, 1.1) + (k > 0 ? '</g>' : ''), bbOf([...pr.map(([x, z]) => [x, PR.y0 + 1, z]), ...pr.map(([x, z]) => [x, PR.y0 + PR.d - 1, z])])); }
   return items;
 }
+function promMech(st){ const X0 = PR.x0, X1 = PR.x0 + PR.w, parts = []; const bx = (a, b, c, d, e, g, m, w = .7) => parts.push({ box: [[a, b, c], [d, e, g]], svg: box(a, b, c, d, e, g, m, toneI, w) });
+  bx(X0 + 2, PR.y0 + 2, 2 + PR.h - 6, X1 - 2, PR.y0 + PR.d - 2, 2 + PR.h - 4.5, matOf('#b8bfc2'));                      // heated block under the 24 positions
+  for (let i = 0; i < 4; i++) bx(X0 + 5 + i*7.5, PR.y0 + 3, 2 + PR.h - 10, X0 + 11 + i*7.5, PR.y0 + PR.d - 3, 2 + PR.h - 6.2, DARK2, .5);   // ASIC boards per column
+  bx(X0 + 3, PR.y0 + 3, 4, X0 + 20, PR.y0 + 18, 26, matOf('#2f3a44'));                                                   // GPU compute
+  bx(X0 + 3, PR.y0 + PR.d - 18, 4, X0 + 18, PR.y0 + PR.d - 3, 14, matOf('#8fa6b8'));                                     // chiller / fans
+  bx(X0 + 24, PR.y0 + 4, 4, X1 - 3, PR.y0 + 16, 12, matOf('#b8bfc2'));                                                   // power supply
+  parts.push({ box: [[X0 + .4, PR.y0 + 4, 14], [X0 + 1.2, PR.y0 + PR.d - 4, 30]], svg: shape(on(PX(X0 + 1), rectUV(PR.y0 + 4, 14, PR.y0 + PR.d - 4, 30)), PCB.m, .7) });
+  return sqSort(parts); }
 
-/* ---------- cards: pore count, current trace, read ---------- */
-const CX = 176;
-function card(y0, w, title, lines, hot, extra = ''){ const x0 = CX, x1 = CX + 1.2, z0 = 2, z1 = 30; let s = box(x0, y0, z0, x1, y0 + w, z1, PAPER, toneI, 1.1);
-  if (facing([1,0,0])){ const X = x1 + .06; s += shape(on(PX(X - .02), rectUV(y0 + .3, z1 - 4.4, y0 + w - .3, z1 - .3)), hot ? 'var(--accent,#93d3b0)' : '#3d3935', .6) + tx(X, y0 + w/2, z1 - 3.1, title, 1.7, hot ? INK : '#f6f2e6', 800);
-    lines.forEach((ln, i) => { if (ln) s += tx(X, y0 + w/2, z1 - 7.6 - 3*i, ln[0], ln[2] || 1.4, ln[1] || INK, 700); }); s += extra; } return s; }
-function cards(st){
-  const X = CX + 1.26, F = facing([1,0,0]), run = st.running; let trace = '', pores = '';
-  if (F){ const y0 = 110 + 38, z0 = 7; let d = '', y = y0; const n = run ? 26 : 0;
-    for (let i = 0; i < n; i++){ const lvl = [9, 4.5, 12, 6.5, 10.5, 3.5, 8, 11.5][(i + st.adv) % 8]; d += `${i ? 'L' : 'M'}`; const a = P(X, y, z0 + lvl), b = P(X, y - 1.3, z0 + lvl); d += `${f(a[0])} ${f(a[1])}L${f(b[0])} ${f(b[1])}`; y -= 1.3; }
-    if (d) trace += `<path d="${d}" fill="none" stroke="${INK}" stroke-width="1.1"/>`;
-    trace += line([[X, 110 + 2, z0], [X, y0 + .5, z0]], .7) + line([[X, y0 + .5, z0], [X, y0 + .5, z0 + 14]], .7) + tx(X + .02, 129, 4.2, run ? 'pA vs TIME: ~5 kHz, ~400 BASES/S' : 'NO CURRENT YET', 1.25, '#857d6e', 700);
-    if (done(st, 'check')) for (let i = 0; i < 128; i++){ const col = i % 16, row = (i / 16) | 0, y2 = 70 + 36 - col*2.2, z2 = 22 - row*2.1, ok = ((i*7 + 3) % 10) > 2;
-      pores += fill(pd(on(PX(X), rectUV(y2 - .8, z2 - .8, y2 + .8, z2 + .8))), ok ? (run ? '#43c25c' : '#8fd9d1') : '#e2483d'); }
-    pores += tx(X + .02, 90, 5.4, done(st, 'check') ? '1420 PORES AVAILABLE (MIN 800)' : 'RUN THE CHECK', 1.3, INK, 700) + tx(X + .02, 90, 3.2, 'GREEN = ACTIVE, RED = UNAVAILABLE', 1.1, '#857d6e', 700); }
-  const readTxt = run ? Array.from({length:Math.min(st.adv, 18)}, (_, i) => BASES[(st.adv - i + 20) % 4]).reverse().join('') : '';
-  return [ { box: [[CX, 110, 2], [CX + 1.3, 150, 30]], svg: card(110, 40, 'CHANNEL TRACE (MinKNOW)', [], run, trace) },
-    { box: [[CX, 70, 2], [CX + 1.3, 110, 30]], svg: card(70, 40, 'FLOW CELL CHECK', [], done(st, 'check') && !run, pores) },
-    { box: [[CX, 30, 2], [CX + 1.3, 70, 30]], svg: card(30, 40, 'BASECALLS (DORADO)', run ? [[readTxt || '-', '#2f6fbf', 1.9], ['READ 1 OF THIS MOLECULE', '#857d6e', 1.25], ['5mC CALLED FROM THE SAME TRACE', '#857d6e', 1.25], ['OUTPUT: POD5 + FASTQ / BAM', '#857d6e', 1.25]] : [null, ['WAITING FOR THE RUN', '#857d6e', 1.4]], run) } ];
-}
+/* ---------- comparison card ---------- */
+function cmpCard(){ const x0 = 4, w = 110, y0 = 104, y1 = 105.2, z1 = 30; let s = box(x0, y0, 2, x0 + w, y1, z1, PAPER, toneI, 1.1);
+  if (facing([0,1,0])){ const Y = y1 + .06, T = (z, str, size, col = INK) => txY(x0 + w/2, Y, z, str, size, col, 700);
+    s += shape(on(PY(Y - .02), rectUV(x0 + .3, z1 - 4.6, x0 + w - .3, z1 - .3)), '#3d3935', .6) + T(z1 - 3.3, 'MinION Mk1D  |  PromethION 24  (same pore, same chemistry, same library)', 2, '#f6f2e6');
+    [['FLOW CELLS: 1  |  24, EACH INDEPENDENT', INK], ['FLOW CELL: 512 CHANNELS, 2048 WELLS, MIN 800 PORES  |  2675 CHANNELS, MIN 5000 PORES', INK], ['OUTPUT: TENS OF Gb PER FLOW CELL  |  ~6x A MinION FLOW CELL EACH; TERABASES PER RUN', INK],
+     ['RUN: UP TO 72 h  |  UP TO 72 h, POSITIONS START AND STOP SEPARATELY', INK], ['BASECALLING: HOST LAPTOP OR GPU  |  ONBOARD GPU TOWER', INK], ['SIZE: 55 x 13 x 125 mm, 130 g, USB-C  |  BENCHTOP CABINET + COMPUTE', INK],
+     ['ALSO: GridION (5 MinION FLOW CELLS + GPU), PromethION 2 (2 PromethION FLOW CELLS), P48', '#857d6e']].forEach((l, i) => { s += T(z1 - 8 - 2.9*i, l[0], 1.45, l[1]); }); }
+  return s; }
 
 let LB = [];
 function scene(st, m){
-  const btop = boardTop(0, 0, BX, BY, 2, 5), cs = (a, b) => { const o = []; for (const x of [a[0], b[0]]) for (const y of [a[1], b[1]]) for (const z of [a[2], b[2]]) o.push([x, y, z]); return o; };
+  const k = ease(st.xr || 0), btop = boardTop(0, 0, BX, BY, 2, 5), cs = (a, b) => { const o = []; for (const x of [a[0], b[0]]) for (const y of [a[1], b[1]]) for (const z of [a[2], b[2]]) o.push([x, y, z]); return o; };
   LB = [];
-  let s = board(0, 0, BX, BY, 2, 5) + castShadow(cs([FC.x0, FC.y0, 2], [FC.x0 + FC.w, FC.y0 + FC.l, ZTOP]), 2, btop) + castShadow(cs([WX0, WY0, 2], [WX1, WY1, ZMEM]), 2, btop);
-  for (const y of [30, 70, 110]) s += castShadow(cs([CX, y, 2], [CX + 1.2, y + 40, 30]), 2, btop);
-  s += `<path d="${pd([[ARR.x0 + ARR.w, ARR.y0 + 10, ZTOP], [WX0, WY0, ZMEM]], false)}${pd([[ARR.x0 + ARR.w, ARR.y0 + 14, ZTOP], [WX0, WY1, ZMEM]], false)}" fill="none" stroke="${INK}" stroke-width="1" stroke-dasharray="${f(3*INK_K)} ${f(3*INK_K)}" opacity=".6"/>`;
-  s += byDepth([...flowCell(st, m), ...well(st, m), ...cards(st)]);
-  const run = st.running, docked = done(st, 'load');
-  LB.push({ at: [PP[0], PP[1], ZTOP + 1.3], text: 'PRIMING PORT COVER', on: st.i === 1 || st.i === 7 }, { at: [SP[0], SP[1] + 2, ZTOP + 1], text: 'SpotON SAMPLE PORT', on: st.i === 5 || st.i === 6 }, { at: [WP[0][0], WP[0][1], ZTOP], text: 'WASTE PORTS', on: false },
-    { at: [ARR.x0 + 2, ARR.y0 + 30, ZTOP], text: 'SENSOR ARRAY (ONE WELL MAGNIFIED)', on: st.i === 0 }, { at: [PC[0], PC[1], ZMEM + 2.4], text: 'NANOPORE (R10.4.1, 2 READER HEADS)', on: run }, { at: [PC[0] - 8, PC[1] - 14, ZMEM - .3], text: 'MEMBRANE', on: false },
-    { at: [PC[0] + 10, PC[1] - 10, ZW + .2], text: 'ELECTRODE: 1 OF 4 WELLS PER CHANNEL', on: false });
-  if (docked) LB.push({ at: [PC[0], PC[1], ZMEM + 4.2], text: 'MOTOR PROTEIN: UNWINDS, RATCHETS 1 STRAND', on: run }, { at: [PC[0] - 2.2 - 14*2.4, PC[1] + 6 + 14*2.6, ZMEM + .2], text: 'TETHER: HOLDS THE LIBRARY ON THE MEMBRANE', on: st.i >= 8 }, { at: [PC[0], PC[1], ZMEM - 8], text: 'STRAND IN THE PORE CHANGES THE CURRENT', on: run });
-  if (run) LB.push({ at: [PC[0] + 7, PC[1] - 6, ZMEM - 3], text: 'ION CURRENT, ~180 mV', on: true });
-  return s + xrCallouts(LB, [0, 176, 30, 900, 0, 50]);
+  let s = board(0, 0, BX, BY, 2, 5) + castShadow([...on(PX(PR.x0), OUTP()), ...on(PX(PR.x0 + PR.w), OUTP())], 2, btop) + castShadow(cs([MI.x0, MI.y0, 2], [MI.x0 + MI.w, MI.y0 + MI.l, 3.3]), 2, btop) + castShadow(cs([MI.x0 + 12, MI.y0 - 38, 2], [MI.x0 + 34, MI.y0 - 17, 16]), 2, btop) + castShadow(cs([4, 104, 2], [114, 105.2, 30]), 2, btop);
+  let mi = minion(st, m, k); if (k > 0) mi = [...mi, { at: [MI.x0 + 2.7, MI.y0 + 6, 2.6], svg: `<g opacity="${f(k)}">${minionMech(st)}</g>`, box: [[MI.x0, MI.y0, 2.1], [MI.x0 + MI.w, MI.y0 + MI.l, 3.2]] }];
+  s += byDepth([...promethion(st, m, k), ...mi, { box: [[4, 104, 2], [114, 105.3, 30]], svg: cmpCard(), at: [60, 104.6, 16] }]);
+  LB.push({ at: [MI.x0 + MI.w/2, MI.y0 + 5, 3.3 + 2.5*st.lid], text: 'MinION LID', on: st.lid > .05 }, { at: [MI.x0 + 2.5, MI.y0 + 1 + 14*(1 - st.fcT) + 4, 3.4], text: 'MinION FLOW CELL (512 CHANNELS)', on: st.fcT > 0 && st.fcT < 1 }, { at: [MI.x0 + 23, MI.y0 - 36, 14], text: 'LAPTOP: MinKNOW + DORADO', on: st.run },
+    { at: [MI.x0 + MI.w/2, MI.y0 - 8, 2.3], text: 'USB-C', on: false }, { at: [PR.x0 + PR.w, PR.y0 + PR.d/2, 32], text: 'PromethION 24 SCREEN', on: st.run24 }, { at: [PR.x0 + 12, PR.y0 + 8, 2 + PR.h + .6], text: '24 FLOW CELL POSITIONS', on: st.lid24 > .05 });
+  if (k > .6) LB.push({ at: [MI.x0 + 2.7, MI.y0 + 5, 2.6], text: 'ASIC: 512 CHANNELS READ AT ONCE', on: st.run }, { at: [MI.x0 + 2.7, MI.y0 + 8, 3.05], text: 'PELTIER: 10-35 C AMBIENT', on: false }, { at: [PR.x0 + 10, PR.y0 + 10, 20], text: 'GPU COMPUTE', on: st.run24 }, { at: [PR.x0 + 20, PR.y0 + PR.d/2, 2 + PR.h - 5], text: 'HEATED BLOCK + ASICs', on: st.run24 });
+  return s + xrCallouts(LB, [0, BX, 0, 100, 0, 50]);
 }
-
-/* ---------- behaviour: the loading protocol, step by step ---------- */
 let ui;
 function anim(st, secs, step, then){ st.busy = true; let t = 0; ui.animate(dt => { t += dt; const u = Math.min(1, t/secs); step(u); if (u >= 1){ st.busy = false; if (then) then(); return false; } return true; }); }
-const pipAt = (st, x, y, col, lcol) => { st.pip = { x, y, in: 0, liq: 1, col, lcol, drop: 0 }; };
-function doStep(st, k){ const i = STEPS.indexOf(k); if (st.busy) return ui.flash('One moment'); if (st.i > i) return ui.flash(NAMES[k] + ' is already done'); if (st.i < i) return ui.flash('First: ' + NAMES[STEPS[st.i]]);
-  ui.flash(NOTES[k], 5200); st.i = i + 1;
-  if (k === 'check') return anim(st, 1.6, u => { st.checkU = u; });
-  if (k === 'open') return anim(st, 1.2, u => { st.ppCover = ease(u); });
-  if (k === 'draw'){ pipAt(st, PP[0], PP[1], '#4aa3ff', '#cfe6ff'); st.pip.liq = 0; return anim(st, 2.4, u => { st.pip.in = ease(c01(u/.3)); st.pip.liq = .25*ease(c01((u - .35)/.4)); st.bubble = 1 - ease(c01((u - .35)/.4)); if (u > .8) st.pip.in = 1 - ease((u - .8)/.2); }, () => { st.pip = null; }); }
-  if (k === 'prime1'){ pipAt(st, PP[0], PP[1], '#4aa3ff', '#cfe6ff'); return anim(st, 3, u => { st.pip.in = u < .8 ? ease(c01(u/.3)) : 1 - ease((u - .8)/.2); st.pip.liq = 1 - ease(c01((u - .3)/.45)); st.primeLvl = 1 - .66*ease(c01((u - .3)/.45)); }, () => { st.pip = null; ui.flash('Wait 5 minutes while the tether coats the membrane', 2600); }); }
-  if (k === 'libmix') return anim(st, 1.8, u => { st.libLvl = .3 + .7*ease(u); if (u > .9) st.libMixed = true; });
-  if (k === 'prime2'){ return anim(st, 1.2, u => { st.spCover = ease(u); }, () => { pipAt(st, PP[0], PP[1], '#4aa3ff', '#cfe6ff'); st.pip.liq = .35; anim(st, 2.2, u => { st.pip.in = u < .8 ? ease(c01(u/.3)) : 1 - ease((u - .8)/.2); st.pip.liq = .35*(1 - ease(c01((u - .3)/.45))); st.primeLvl = Math.max(0, .34 - .17*ease(c01((u - .3)/.45))); }, () => { st.pip = null; }); }); }
-  if (k === 'load'){ pipAt(st, SP[0], SP[1], '#e0409a', '#f3a6bb'); return anim(st, 5, u => { st.pip.in = u < .9 ? ease(c01(u/.2)) : 1 - ease((u - .9)/.1); const ph = c01((u - .2)/.65); st.pip.liq = 1 - ph; st.libLvl = 1 - ph; st.pip.drop = (ph*6) % 1; }, () => { st.pip = null; }); }
-  if (k === 'close') return anim(st, 2.4, u => { st.spCover = 1 - ease(c01(u/.4)); st.ppCover = 1 - ease(c01((u - .3)/.4)); st.shield = ease(c01((u - .5)/.5)); });
-  if (k === 'run'){ st.running = true; ui.animate(dt => { st.t = (st.t || 0) + dt; if (st.t > .18){ st.t = 0; st.adv++; } return st.running; }); }
-}
+function loadMinion(st){ if (st.busy) return ui.flash('One moment'); if (st.fc) return ui.flash('The MinION flow cell is in'); anim(st, 1, u => { st.lid = ease(u); }, () => anim(st, 1.6, u => { st.fcT = ease(u); }, () => { st.fc = 1; anim(st, .8, u => { st.lid = 1 - ease(u); }, () => ui.flash('Flow cell check in MinKNOW: 1420 pores. Primed and loaded as on the flow cell page', 3000)); })); }
+function runMinion(st){ if (st.busy) return ui.flash('One moment'); if (!st.fc) return ui.flash('Insert the flow cell first'); if (st.run) return ui.flash('Already sequencing'); st.run = 1; ui.flash('Sequencing: 512 channels read in real time, basecalled on the laptop, up to 72 h', 3000); runLoop(); }
+function loadProm(st){ if (st.busy) return ui.flash('One moment'); const n = st.p24.filter(Boolean).length; if (n >= 24) return ui.flash('All 24 positions are full');
+  anim(st, 1, u => { st.lid24 = ease(u); }, () => { let i = 0; const add = () => { if (i < 6 && n + i < 24){ st.p24[n + i] = 1; i++; ui.render(); setTimeout(add, 150); } else anim(st, .8, u => { st.lid24 = 1 - ease(u); }, () => ui.flash('Six more flow cells. Each position is primed, loaded and started on its own', 2600)); }; add(); }); }
+function runProm(st){ if (st.busy) return ui.flash('One moment'); if (!st.p24.some(Boolean)) return ui.flash('Load flow cells first'); st.run24 = 1; ui.flash('All loaded positions sequencing; onboard GPUs basecall every channel live', 2600); runLoop(); }
+let loopOn = false; function runLoop(){ if (loopOn) return; loopOn = true; ui.animate(dt => { const st = ui.st; if (st.run) st.gb = Math.min(30, st.gb + dt*.6); if (st.run24) st.gbP = Math.min(24*150, st.gbP + dt*st.p24.filter(Boolean).length*3.5); return true; }); }
 ui = mountFigure({
-  fig:'35', turn:'full', title:'Nanopore flow cell: priming, loading, reading', size:[BX, BY, 60], palette:'mint',
-  state:{ i:0, busy:false, pip:null, ppCover:0, spCover:0, bubble:1, primeLvl:1, libLvl:.3, libMixed:false, shield:0, running:false, adv:0, checkU:0 },
+  fig:'36', turn:'full', title:'Nanopore devices: MinION Mk1D and PromethION 24', size:[BX, BY, 50], palette:'mint',
+  state:{ lid:0, fcT:0, fc:0, run:0, gb:0, lid24:0, p24: new Array(24).fill(0), run24:0, gbP:0, busy:false },
   scene,
-  buttons:[ ...STEPS.map(k => ({ label: NAMES[k], onClick: st => doStep(st, k) })),
-    { label:'Reset', onClick: st => { if (st.busy) return ui.flash('One moment'); Object.assign(st, { i:0, pip:null, ppCover:0, spCover:0, bubble:1, primeLvl:1, libLvl:.3, libMixed:false, shield:0, running:false, adv:0 }); } },
-    { label:'Next: devices', onClick: () => { location.href = 'nanopore-device.html'; } }, { label:'Nanopore prep', onClick: () => { location.href = 'nanopore-library-prep.html'; } }, { label:'Cover', onClick: () => { location.href = 'index.html'; } } ],
-  stats: st => [ { label:'Step', value: `${st.i}/9` }, { label:'Pores', small:true, value: done(st, 'check') ? 1420 : '-' }, { label:'Bases read', small:true, value: st.running ? st.adv : '-' } ],
-  params:(st, q) => { if (q.has('i')){ st.i = +q.get('i'); const i = st.i; st.bubble = i > 2 ? 0 : 1; st.ppCover = i > 1 && i < 8 ? 1 : 0; st.spCover = i > 5 && i < 8 ? 1 : 0; st.primeLvl = i > 5 ? .17 : i > 3 ? .34 : 1; st.libMixed = i > 4; st.libLvl = i > 6 ? 0 : i > 4 ? 1 : .3; st.shield = i >= 8 ? 1 : 0; if (i >= 9){ st.running = true; st.adv = +(q.get('adv') || 12); } } },
+  buttons:[ { label:'MinION: insert flow cell', onClick: st => loadMinion(st) }, { label:'MinION: start', onClick: st => runMinion(st) }, { label:'PromethION: load 6 flow cells', onClick: st => loadProm(st) }, { label:'PromethION: start', onClick: st => runProm(st) },
+    { label:'Reset', onClick: st => { if (st.busy) return ui.flash('One moment'); Object.assign(st, { lid:0, fcT:0, fc:0, run:0, gb:0, lid24:0, p24: new Array(24).fill(0), run24:0, gbP:0 }); } },
+    { label:'Nanopore flow cell', onClick: () => { location.href = 'flow-cell.html'; } }, { label:'Revio sequencer', onClick: () => { location.href = '../pacbio/sequencer.html'; } }, { label:'Cover', onClick: () => { location.href = '../../index.html'; } } ],
+  stats: st => [ { label:'MinION', small:true, value: st.run ? st.gb.toFixed(1) + ' Gb' : st.fc ? 'ready' : 'empty' }, { label:'PromethION 24', small:true, value: st.run24 ? st.gbP.toFixed(0) + ' Gb' : st.p24.filter(Boolean).length + '/24 loaded' } ],
+  params:(st, q) => { if (q.get('fc') === '1'){ st.fc = 1; st.fcT = 1; } if (q.has('lid')) st.lid = +q.get('lid'); if (q.has('fcT')) st.fcT = +q.get('fcT'); if (q.has('p24')){ const n = +q.get('p24'); for (let i = 0; i < n; i++) st.p24[i] = 1; } if (q.has('lid24')) st.lid24 = +q.get('lid24');
+    if (q.get('run') === '1'){ st.run = 1; st.gb = 12.4; } if (q.get('run24') === '1'){ st.run24 = 1; st.gbP = 820; } },
 });
-xrMount(() => ui, () => '', { labelsOnly:true });
+xrMount(() => ui, () => '');
 </script>
 <style>.draft{display:inline-block;margin-left:10px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;border:1.5px solid #e2483d;color:#e2483d;border-radius:999px;padding:2px 9px;vertical-align:middle}</style>
 <script>document.querySelector('header h1').insertAdjacentHTML('afterend','<span class="draft">Draft: in progress, not yet checked</span>');</script>
