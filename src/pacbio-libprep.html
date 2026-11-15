@@ -12,8 +12,9 @@
    3-bp stem plus a 6-nt loop (real: ~45 nt loop).
 
    WHAT EACH STEP DOES
-   0. High-molecular-weight genomic DNA (tens to hundreds of kb), with some short fragments and nicks.
-   1. SRE: short fragments (up to ~25 kb) are depleted so they do not take up ZMWs later.
+   0. High-molecular-weight genomic DNA (tens to hundreds of kb) after extraction. The kit's optional short-read
+      eliminator (SRE) acts on this gDNA, so it belongs to the end of extraction / DNA QC, not to the library itself;
+      the page starts after it, with the library's first step: shearing.
    2. SHEAR to the target size (15-20 kb) with a Megaruptor or g-TUBE; ends are ragged.
    3. REPAIR + A-TAIL: nicks, gaps and damaged bases are repaired, ends made blunt, one A added to each 3' end.
    4. LIGATE SMRTbell ADAPTERS: hairpin adapters with a T overhang go on BOTH ends: the double-stranded insert is now a
@@ -74,7 +75,7 @@ function clampAt(p, m, R = 4.2){ const c = p, pts = []; for (let i = 0; i <= 24;
   return `<g opacity=".8">${st(INK, .56)}${st(m.m, .5)}${st(m.l, .2)}</g>`; }
 
 const STEPS = [null,
-  { name:'Short read eliminator', note:'SRE depletes fragments up to about 25 kb, so short pieces do not take up ZMWs later', r:'HMW DNA, shorts removed' },
+  { name:'(SRE: part of extraction)', note:'', r:'HMW DNA after extraction' },
   { name:'Shear', note:'Megaruptor or g-TUBE shears to 15 to 20 kb; the ends are ragged', r:'15-20 kb, ragged ends' },
   { name:'Repair + A-tail', note:'Nicks, gaps and damaged bases are repaired, ends made blunt, one A on each 3 end', r:'repaired, blunt, 3 A' },
   { name:'Ligate SMRTbell adapters', note:'Hairpin adapters with a T overhang close BOTH ends: the insert is now a single-stranded circle', r:'SMRTbell: closed circle' },
@@ -98,12 +99,11 @@ function qcCard(st){
 let LP_LABELS = [];
 function patch(st, m){
   const u = st.anim ? st.u : 1, fI = st.anim ? c01((u - .25)/.5) : 1, L = LP_LABELS, n = st.step, lab = (at, text, on = false) => L.push({ at, text, on }), on = !!st.anim;
-  let s = box(8, 14, 2, 112, 136, SZ, GLASS, toneI, 1.4) + flat(XR[0] + 6.5, YC, 'THE FRAGMENT WE FOLLOW', 3.2) + flat(XR[1] + 6.5, YC, 'A SHORT FRAGMENT', 3.2) + flat(XR[2] + 6.5, YC, 'LEFTOVERS', 3.2);
+  let s = box(8, 14, 2, 112, 136, SZ, GLASS, toneI, 1.4) + flat(XR[0] + 6.5, YC, 'THE FRAGMENT WE FOLLOW', 3.2) + flat(XR[1] + 6.5, YC, 'A SHORT SMRTbell', 3.2) + flat(XR[2] + 6.5, YC, 'LEFTOVERS', 3.2);
   const items = [], put = (at, svg) => items.push({ at, svg }), fade = (svg, o) => `<g opacity="${f(o)}">${svg}</g>`;
   const M = { x: XR[0], yc: YC, k0: 0, k1: 23 };
   // ---- the fragment we follow
-  if (n === 0) put([M.x, YC, ZM], drawMol({ ...M, k0: -16, k1: 36, nicks: [4, -(19) - 100, 29] }));
-  if (n === 1) put([M.x, YC, ZM], drawMol({ ...M, k0: -16, k1: 36, nicks: [4, -(19) - 100, 29] }));
+  if (n <= 1) put([M.x, YC, ZM], drawMol({ ...M, k0: -16, k1: 36, nicks: [4, -(19) - 100, 29] }));
   if (n === 2){ put([M.x, YC, ZM], drawMol({ ...M, nicks: [4, -(19) - 100], ragged: true }));
     if (st.anim){ const e = ease(c01((u - .3)/.5)); put([M.x, YC + 40, ZM], fade(drawMol({ x: M.x, yc: YC, k0: 26, k1: 36, from: [0, 0, 0] }), 1 - e)); put([M.x, YC - 40, ZM], fade(drawMol({ x: M.x, yc: YC, k0: -16, k1: -3 }), 1 - e)); if (u > .1 && u < .7){ for (const k of [-1.5, 24.5]) put([M.x, yk(M, k), ZM + 3], note([M.x, yk(M, k), ZM + 3.5], 'CUT', '#e2483d', 3)); } } }
   if (n === 3){ const rep = st.anim ? ease(c01((u - .3)/.4)) : 1; put([M.x, YC, ZM], drawMol({ ...M, nicks: rep > .5 ? [] : [4, -(19) - 100], ragged: rep < .5, atail: rep > .8 })); if (on && rep < .5){ lab(tp(M, 4), 'NICK: REPAIRED', true); lab(bp(M, 19), 'DAMAGED BASE: REPAIRED', true); } }
@@ -112,9 +112,6 @@ function patch(st, m){
     if (po){ const h = hairpin(M, -1), c = [M.x + 1.5, h.loop[2][1] + 2.4, ZM + .6]; put(add(c, [0, 0, .5]), clampAt(c, m)); lab(c, 'SEQUENCING POLYMERASE: BOUND', on); }
     if (pr) lab([M.x, hairpin(M, -1).loop[2][1] + 2.4, ZM + .4], 'SEQUENCING PRIMER IN THE LOOP', on && !po); }
   // ---- a short fragment: lost at SRE
-  if (n === 0) put([XR[1], YC, ZM], drawMol({ x: XR[1], yc: YC, k0: 5, k1: 13 }));
-  if (n === 1 && st.anim) put([XR[1], YC, ZM], fade(drawMol({ x: XR[1], yc: YC, k0: 5, k1: 13 }), 1 - ease(c01((u - .3)/.5))));
-  if (n === 1 && st.anim) lab([XR[1], YC, ZM + 2], 'SHORT: DEPLETED BY SRE', true);
   // ---- leftovers after ligation: a one-adapter molecule and free adapters, eaten by the nuclease; a short SMRTbell, lost at size selection
   if (n === 4 || n === 5){ const g = n === 5 && st.anim ? 1 - ease(c01((u - .25)/.5)) : n === 5 ? 0 : 1; if (g > 0){
     put([XR[2], YC, ZM], fade(drawMol({ x: XR[2], yc: YC, k0: 8, k1: 16, hpR: 1, atail: true }), g)); put([XR[1], YC + 20, ZM], fade(drawMol({ x: XR[1], yc: YC + 18, k0: 11, k1: 11, hpR: 1, hpL: 1 }), g));
@@ -122,7 +119,7 @@ function patch(st, m){
     if (n === 5 && st.anim){ lab([XR[2] - DUP, yk({ yc: YC }, 8), ZM], 'FREE END: DIGESTED', true); lab([M.x + DUP, yk(M, 12), ZM], 'NO FREE END: SURVIVES', true); } } }
   if (n === 5 || n === 6){ const g = n === 6 && st.anim ? 1 - ease(c01((u - .25)/.5)) : n === 6 ? 0 : 1; if (g > 0){ put([XR[1], YC, ZM], fade(drawMol({ x: XR[1], yc: YC, k0: 8, k1: 12, hpL: 1, hpR: 1 }), g)); if (n === 6 && st.anim) lab([XR[1] - DUP, yk({ yc: YC }, 10), ZM], 'UNDER 5 kb: DEPLETED', true); else if (n === 5 && !st.anim) lab([XR[1] - DUP, yk({ yc: YC }, 10), ZM], 'A SHORT SMRTbell', false); } }
   // names
-  if (n === 0){ lab(tp(M, -10), 'HMW GENOMIC DNA', false); lab(tp(M, 4), 'NICK', false); lab([XR[1] - DUP, yk({ yc: YC }, 9), ZM], 'SHORT FRAGMENT', false); }
+  if (n <= 1){ lab(tp(M, -10), 'HMW GENOMIC DNA, AFTER EXTRACTION', false); lab(tp(M, 4), 'NICK', false); lab(bp(M, 19), 'DAMAGED BASE', false); lab(tp(M, 30), 'SHORT PIECES ALREADY REMOVED (SRE)', false); }
   if (n === 2){ lab(tp(M, 10), 'INSERT: 15 TO 20 kb', on); lab(bp(M, 23), 'RAGGED END', on); }
   if (n === 3 && !st.anim){ lab(bp(M, -1), 'A OVERHANG', false); lab(tp(M, 10), 'INSERT', false); }
   if (n >= 4){ const h = hairpin(M, 1); lab(h.loop[3], 'HAIRPIN ADAPTER', on && n === 4); lab(h.top[1], 'STEM: T PAIRS WITH A', on && n === 4); if (!st.anim || n > 4) lab(tp(M, 10), n >= 4 ? 'SMRTbell: ONE CLOSED CIRCLE' : 'INSERT', n === 4); }
@@ -145,14 +142,15 @@ function doStep(st, n){ if (st.anim) return ui.flash('One moment'); if (st.step 
 ui = mountFigure({
   fig:'31', turn:'full', title:'SMRTbell library prep (PacBio HiFi)',
   size:[BX, BY, 44], palette:'mustard',
-  state:{ step:0, anim:false, u:0 },
+  state:{ step:1, anim:false, u:0 },
   scene,
-  buttons:[ ...[1, 2, 3, 4, 5, 6, 7].map(n => ({ label: STEPS[n].name, onClick: st => doStep(st, n) })),
-    { label:'Reset', onClick: st => { if (st.anim) return ui.flash('One moment'); st.step = 0; st.u = 0; } },
+  buttons:[ ...[2, 3, 4, 5, 6, 7].map(n => ({ label: STEPS[n].name, onClick: st => doStep(st, n) })),
+    { label:'Reset', onClick: st => { if (st.anim) return ui.flash('One moment'); st.step = 1; st.u = 0; } },
     { label:'Next: SMRT Cell', onClick: () => { location.href = 'pacbio-smrt-cell.html'; } },
+    { label:'Nanopore prep', onClick: () => { location.href = 'nanopore-library-prep.html'; } },
     { label:'Short-read prep', onClick: () => { location.href = 'library-prep.html'; } },
     { label:'Cover', onClick: () => { location.href = 'index.html'; } } ],
-  stats: st => [ { label:'Step', value: `${st.step}/7` }, { label:'In the tube', value: st.step === 0 ? 'HMW DNA + shorts' : STEPS[st.step].r, small:true } ],
+  stats: st => [ { label:'Step', value: `${st.step - 1}/6` }, { label:'In the tube', value: STEPS[st.step].r, small:true } ],
   params:(st, q) => { if (q.has('step')) st.step = +q.get('step'); if (q.has('u')){ st.u = +q.get('u'); st.anim = true; } },
 });
 xrMount(() => ui, () => '', { labelsOnly:true });
