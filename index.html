@@ -51,9 +51,9 @@ footer{margin-top:40px;font-size:11px;letter-spacing:.08em;text-transform:upperc
   <a class="step pb r1" href="pacbio-revio.html"><b>3a. Revio-style sequencer</b><span>Four stages, four SMRT Cells running independently, onboard GPUs building HiFi reads and calling methylation.</span></a>
   <a class="step ont r2" href="nanopore-library-prep.html"><b>1b. Nanopore library prep</b><span>Optional fragmentation or size selection, end-prep + nick repair, then either the sequencing adapter straight on (one sample) or native barcodes first (many samples), clean up, prime and load.</span></a>
   <div class="arrow2 r2" style="grid-column:2"><svg viewBox="0 0 36 60" preserveAspectRatio="none"><path d="M0 30 L36 30" fill="none" stroke="#231e16" stroke-width="1.5"/><path d="M30 25 L36 30 L30 35" fill="none" stroke="#231e16" stroke-width="1.5"/></svg></div>
-  <div class="step r2 soon"><b>2b. Nanopore flow cell</b><span>A strand threads through a protein pore; the ionic current changes with the bases in the pore. In preparation.</span></div>
-  <div class="arrow2 r2"></div>
-  <div class="step r2 soon"><b>3b. Nanopore device</b><span>In preparation.</span></div>
+  <a class="step ont r2" href="nanopore-flow-cell.html"><b>2b. Nanopore flow cell</b><span>Priming and loading step by step (flow cell check, priming port, draw-back, 800 + 200 uL priming mix, 75 uL library dropwise on SpotON, light shield), then one well: the motor feeds a strand through the pore and the current trace becomes the read.</span></a>
+  <div class="arrow2 r2"><svg viewBox="0 0 36 60" preserveAspectRatio="none"><path d="M0 30 L36 30" fill="none" stroke="#231e16" stroke-width="1.5"/><path d="M30 25 L36 30 L30 35" fill="none" stroke="#231e16" stroke-width="1.5"/></svg></div>
+  <a class="step ont r2" href="nanopore-device.html"><b>3b. MinION and PromethION</b><span>A pocket MinION on a laptop and a PromethION 24 with onboard GPUs: same pore and chemistry, 1 versus 24 flow cells.</span></a>
 </div>
 <div class="key"><div><i style="background:#f4b829"></i>PacBio HiFi: no amplification, real-time single-molecule reading, consensus of many passes</div><div><i style="background:#93d3b0"></i>Nanopore: a motor protein feeds one strand through a pore; the current trace is the read</div></div>
 

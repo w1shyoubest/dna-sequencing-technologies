@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nanopore devices: MinION and PromethION</title>
+<style>.controls .ctl:nth-child(1),.controls .ctl:nth-child(2){display:none!important}</style></head><body>
+<script src="core.js"></script>
+<script>
+/* Two Oxford Nanopore devices on one bench, 1 unit = 1 cm: a MinION Mk1D (from ONT's product page: 55 x 13 x 125 mm,
+   130 g, USB-C to a laptop, one flow cell, Peltier temperature control, up to 72 h runs) and a PromethION 24
+   (24 independent PromethION flow cells, 72 h runs, onboard GPUs for real-time basecalling; cabinet size approximated).
+   Flow cells: MinION R10.4.1 FLO-MIN114, 512 channels / 2048 wells, warranty minimum 800 pores (ONT protocol);
+   PromethION FLO-PRO114M, 2675 channels (widely quoted), warranty minimum 5000 pores (ONT protocol), about six times
+   the capacity of a MinION flow cell (ONT). Same pore, same chemistry, same library: the difference is scale and compute.
+   The MinION basecalls on the host laptop or GPU; the PromethION 24 has its own GPU compute tower (drawn as one box). */
+const BX = 120, BY = 110, MI = { x0: 60, y0: 70, w: 5.5, l: 12.5, h: 1.3 }, PR = { x0: 10, y0: 8, w: 40, d: 45, h: 44 };
+const SHELL = matOf('#d9dde0'), DARK2 = matOf('#3d3935'), LIDM = matOf('#f1ede0'), PCB = matOf('#3f8f5a'), GLASS = matOf('#d9eef1'), PAPER = matOf('#fbfaf3'), FCM = matOf('#cfd4d8');
+const mu = w => `style="stroke-width:${w.toFixed(2)}"`, c01 = v => Math.max(0, Math.min(1, v));
+const flat = (x, y, z, str, size, col = INK) => `<text transform="${txM(P(x, y, z), Dv(0,-1,0), Dv(1,0,0))}" font-size="${size}" fill="${col}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="800" letter-spacing=".04em">${str}</text>`;
+const bbOf = pts => [[0,1,2].map(i => Math.min(...pts.map(p => p[i]))), [0,1,2].map(i => Math.max(...pts.map(p => p[i])))];
+function sqPrismY(prof, y0, y1, m, w = 1){ const A = prof.map(([x, z]) => [x, y0, z]), B = prof.map(([x, z]) => [x, y1, z]); let s = loft(A, B, n => toneI(n, m));
+  if (vis([0,1,0])) s += shape(B, toneI([0,1,0], m), .6); else if (vis([0,-1,0])) s += shape(A, toneI([0,-1,0], m), .6);
+  return s + ink(pd([A[0], B[0], B[3], A[3]]), w*.7) + ink(pd([A[1], B[1], B[2], A[2]]), w*.7) + hullInk([...A, ...B], w + .8); }
+
+/* ---------- MinION Mk1D: a stick with a hinged lid; the flow cell slides in under the lid ---------- */
+function minion(st, m, k){
+  const M = MI, z0 = 2, z1 = z0 + M.h, items = [], put = (at, svg, box2) => items.push({ at, svg, box: box2 });
+  let s = box(M.x0, M.y0, z0, M.x0 + M.w, M.y0 + M.l, z1, SHELL, toneI, 1.1);
+  s += shape(on(PZ(z1 + .03), rrUV(M.x0 + .5, M.y0 + 1, M.x0 + M.w - .5, M.y0 + 9.5, .4)), '#2b2523', .6);           // the flow cell bay
+  s += flat(M.x0 + M.w/2, M.y0 + 11, z1 + .03, 'MinION Mk1D', 1.1, '#5f6b70');
+  // USB-C lead out of the back end, to the laptop
+  s += box(M.x0 + M.w/2 - .6, M.y0 - 1.2, z0 + .3, M.x0 + M.w/2 + .6, M.y0, z0 + .9, DARK2, toneI, .5);
+  const cord = [[M.x0 + M.w/2, M.y0 - 1.2, z0 + .6], [M.x0 + M.w/2, M.y0 - 6, z0 + .3], [M.x0 + M.w/2 + 6, M.y0 - 12, z0 + .3], [M.x0 + 14, M.y0 - 14, z0 + .3]];
+  s += `<path d="${pd(cord, false)}" fill="none" stroke="${INK}" ${mu(1.2)} stroke-linecap="round" stroke-linejoin="round"/><path d="${pd(cord, false)}" fill="none" stroke="${DARK2.m}" ${mu(.7)} stroke-linecap="round" stroke-linejoin="round"/>`;
+  put([M.x0 + M.w/2, M.y0 + M.l/2, z0 + .6], s, [[M.x0, M.y0 - 14, z0], [M.x0 + 14, M.y0 + M.l, z1 + .05]]);
+  // the MinION flow cell, on the bench or in the bay
+  const t = st.fcT, p = [M.x0 + M.w/2 - 1.6 + (1.6 - 0)*0, M.y0 + 1 + 8*(1 - t) + 10*(1 - t)*0, z1 + .05], fx = M.x0 + .9, fy = M.y0 + 1 + 14*(1 - t), fz = z1 + .05 + 3*Math.sin(Math.PI*t)*0;
+  const fcell = box(fx, fy, fz, fx + 3.2, fy + 8.2, fz + .7, FCM, toneI, .7) + shape(on(PZ(fz + .73), rectUV(fx + .8, fy + 2.5, fx + 2.4, fy + 5.5)), st.run ? '#43c25c' : '#7f8ea0', .4) + shape(on(PZ(fz + .73), ellUV(fx + 1.6, fy + 7.2, .35, .35, 8)), '#3d3935', .3);
+  put([fx + 1.6, fy + 4, fz + .4], fcell, [[fx, fy, fz], [fx + 3.2, fy + 8.2, fz + .8]]);
+  // the lid, hinged at the back end (y = y0), opening upward
+  { const a = st.lid*75*Math.PI/180, pr = [[0, 0], [10, 0], [10, .35], [0, .35]].map(([dy, dz]) => [M.y0 + .3 + dy*Math.cos(a) - dz*Math.sin(a), z1 + .1 + dy*Math.sin(a) + dz*Math.cos(a)]);
+    const A = pr.map(([y, z]) => [M.x0 + .2, y, z]), B = pr.map(([y, z]) => [M.x0 + M.w - .2, y, z]);
+    let lid = loft(A, B, n => toneI(n, LIDM)) + (vis([1,0,0]) ? shape(B, toneI([1,0,0], LIDM), .6) : vis([-1,0,0]) ? shape(A, toneI([-1,0,0], LIDM), .6) : '') + hullInk([...A, ...B], 1.1);
+    if (st.lid < .05) lid += flat(M.x0 + M.w/2, M.y0 + 5, z1 + .5, 'OXFORD NANOPORE', .8, '#857d6e');
+    put([M.x0 + M.w/2, M.y0 + 5, z1 + 3], (k > 0 ? `<g opacity="${f(1 - .8*k)}">${lid}</g>` : lid), bbOf([...A, ...B])); }
+  // laptop running MinKNOW
+  const L = { x0: M.x0 + 12, y0: M.y0 - 32, w: 22, d: 15 };
+  let lap = box(L.x0, L.y0, 2, L.x0 + L.w, L.y0 + L.d, 3.2, SHELL, toneI, 1) + shape(on(PZ(3.23), rectUV(L.x0 + 2, L.y0 + 2, L.x0 + L.w - 2, L.y0 + L.d - 3)), '#4a5057', .4);
+  const scr = [[L.x0, L.y0, 3.2], [L.x0 + L.w, L.y0, 3.2], [L.x0 + L.w, L.y0 - 6, 16], [L.x0, L.y0 - 6, 16]];
+  lap += shape(scr, '#3d3935', 1) + shape(scr.map((p, i) => [p[0] + (i === 0 || i === 3 ? 1 : -1), p[1] + (i < 2 ? -.4 : .4), p[2] + (i < 2 ? .8 : -.8)]), '#1d2a26', .5);
+  if (facing([0,-1,0]) || facing([0,0,1])){ const T = (dz, str, size, col = '#8af0ae') => { const q = P(L.x0 + L.w/2, L.y0 - 6*(dz/13), 3.2 + dz); return `<text transform="${txM(q, Dv(1,0,0), Dv(0, .42, -.9))}" font-size="${size}" fill="${col}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="700">${str}</text>`; };
+    lap += T(10.5, 'MinKNOW', 1.6) + T(8, st.run ? 'SEQUENCING  . 1392 PORES ACTIVE' : st.fc ? 'FLOW CELL CHECK: 1420 PORES' : 'NO FLOW CELL', 1.1, '#5fae82') + T(5.8, st.run ? `${(st.gb).toFixed(1)} Gb  .  READ N50 18 kb` : 'DORADO BASECALLING ON THIS LAPTOP', 1.1, '#5fae82'); }
+  put([L.x0 + L.w/2, L.y0 + 4, 6], lap, [[L.x0, L.y0 - 6, 2], [L.x0 + L.w, L.y0 + L.d, 16.2]]);
+  return items;
+}
+function minionMech(st){ const M = MI, z0 = 2; const parts = [];
+  parts.push({ box: [[M.x0 + .6, M.y0 + 1, z0 + .2], [M.x0 + M.w - .6, M.y0 + 9.8, z0 + .5]], svg: box(M.x0 + .6, M.y0 + 1, z0 + .2, M.x0 + M.w - .6, M.y0 + 9.8, z0 + .5, PCB, toneI, .5) });
+  parts.push({ box: [[M.x0 + 1.4, M.y0 + 3, z0 + .5], [M.x0 + M.w - 1.4, M.y0 + 7, z0 + .75]], svg: box(M.x0 + 1.4, M.y0 + 3, z0 + .5, M.x0 + M.w - 1.4, M.y0 + 7, z0 + .75, DARK2, toneI, .4) });   // ASIC under the array
+  parts.push({ box: [[M.x0 + 1, M.y0 + 1.2, z0 + .75], [M.x0 + M.w - 1, M.y0 + 9.6, z0 + 1.05]], svg: box(M.x0 + 1, M.y0 + 1.2, z0 + .75, M.x0 + M.w - 1, M.y0 + 9.6, z0 + 1.05, matOf('#b8bfc2'), toneI, .4) });   // Peltier + heat spreader
+  parts.push({ box: [[M.x0 + .8, M.y0 + 10.2, z0 + .3], [M.x0 + M.w - .8, M.y0 + 11.8, z0 + 1.1]], svg: box(M.x0 + .8, M.y0 + 10.2, z0 + .3, M.x0 + M.w - .8, M.y0 + 11.8, z0 + 1.1, DARK2, toneI, .4) });   // fan
+  return sqSort(parts); }
+function sqSort(parts){ parts = parts.filter(Boolean); const n = parts.length, scr = parts.map(p => { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const x of [p.box[0][0], p.box[1][0]]) for (const y of [p.box[0][1], p.box[1][1]]) for (const z of [p.box[0][2], p.box[1][2]]){ const q = P(x, y, z); x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); } return [x0, y0, x1, y1]; });
+  const dep = parts.map(p => depthOf(boxMid(p.box))), after = parts.map(() => []), need = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++){ const a = scr[i], b = scr[j]; if (a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]) continue; const o = sepOrder(parts[i], parts[j]); if (o < 0){ after[i].push(j); need[j]++; } else if (o > 0){ after[j].push(i); need[i]++; } }
+  const done = new Array(n).fill(false); let out = ''; for (let c = 0; c < n; c++){ let best = -1, free = false; for (let i = 0; i < n; i++){ if (done[i]) continue; const fr = need[i] === 0; if (best < 0 || (fr && !free) || (fr === free && dep[i] < dep[best])){ best = i; free = fr; } } done[best] = true; out += parts[best].svg; for (const j of after[best]) need[j]--; } return out; }
+
+/* ---------- PromethION 24: a cabinet with a 6 x 4 field of flow cell positions under a lid, and a compute tower ---------- */
+const OUTP = () => rrUV(PR.y0, 2, PR.y0 + PR.d, 2 + PR.h, 2);
+function promethion(st, m, k){
+  const X0 = PR.x0, X1 = PR.x0 + PR.w, items = [], put = (at, svg, box2) => items.push({ at, svg, box: box2 });
+  let s = (facing([1,0,0]) ? fill(pd(on(PX(X1), OUTP())), tone([1,0,0], m)) : '') + (facing([-1,0,0]) ? fill(pd(on(PX(X0), OUTP())), tone([-1,0,0], m)) : '') + extrude(OUTP(), X0, X1, m);
+  if (facing([1,0,0])){ s += shape(on(PX(X1 + .12), rrUV(PR.y0 + 3, 20, PR.y0 + PR.d - 3, 40, 1.2)), '#3d3935', .9) + fill(pd(on(PX(X1 + .2), rectUV(PR.y0 + 4, 21, PR.y0 + PR.d - 4, 39))), '#1d2a26');
+    const T = (y, z, str, size, col = '#8af0ae') => tx(X1 + .3, y, z, str, size, col, 700), act = st.p24.filter(Boolean).length;
+    s += T(PR.y0 + PR.d/2, 36.5, 'PromethION 24 . MinKNOW', 1.5) + T(PR.y0 + PR.d/2, 33.5, act ? `${act} FLOW CELLS RUNNING` : 'LOAD FLOW CELLS', 1.3, '#5fae82') + T(PR.y0 + PR.d/2, 30.5, act ? `${(st.gbP).toFixed(0)} Gb SO FAR . 72 h RUNS` : 'EACH POSITION INDEPENDENT', 1.2, '#5fae82') + T(PR.y0 + PR.d/2, 27.5, 'GPU BASECALLING ONBOARD', 1.2, '#5fae82');
+    for (let i = 0; i < 24; i++){ const y = PR.y0 + 6 + (i % 6)*5.6, z = 15 - ((i / 6) | 0)*3.2; s += shape(on(PX(X1 + .12), rrUV(y, z, y + 4, z + 1.6, .4)), st.p24[i] ? '#43c25c' : '#c9c1b2', .4); }
+    s += tx(X1 + .3, PR.y0 + PR.d/2, 4, '24 POSITIONS . 1 FLOW CELL EACH', 1.1, '#857d6e', 700); }
+  if (facing([-1,0,0])){ let v = ''; for (let z = 6; z <= 40; z += 2.5) v += pd([[X0 - .2, PR.y0 + 5, z], [X0 - .2, PR.y0 + PR.d - 5, z]], false); s += `<path d="${v}" fill="none" stroke="${INK}" stroke-width="1.1" opacity=".7"/>`; }
+  if (facing([0,1,0])) s += txY((X0 + X1)/2, PR.y0 + PR.d + .2, 25, 'PromethION 24', 3.4, mix(tone([0,1,0], m), '#000000', .45), 800);
+  s += hullInk([...on(PX(X0), OUTP()), ...on(PX(X1), OUTP())], 2.6);
+  if (k > 0) s = xrGhost(s, '', k, OUTP(), X0, X1, m) + `<g opacity="${f(k)}">${promMech(st)}</g>`;
+  put([(X0 + X1)/2, PR.y0 + PR.d/2, 20], s, [[X0, PR.y0, 2], [X1, PR.y0 + PR.d, 2 + PR.h]]);
+  // top: the lid over the flow cell field; flow cells visible when open
+  const zt = 2 + PR.h; let top = '';
+  for (let i = 0; i < 24; i++){ const x = X0 + 5 + ((i / 6) | 0)*7.5, y = PR.y0 + 4 + (i % 6)*6.4; top += shape(on(PZ(zt + .03), rrUV(x, y, x + 5.5, y + 5, .5)), '#3d3935', .5);
+    if (st.p24[i]) top += box(x + .4, y + .4, zt + .03, x + 5.1, y + 4.6, zt + .6, FCM, toneI, .4) + shape(on(PZ(zt + .64), rectUV(x + 1.5, y + 1.3, x + 4, y + 3.7)), st.run24 ? '#43c25c' : '#7f8ea0', .3); }
+  put([(X0 + X1)/2, PR.y0 + PR.d/2, zt + .3], top, [[X0, PR.y0, zt], [X1, PR.y0 + PR.d, zt + .7]]);
+  { const a = st.lid24*70*Math.PI/180, pr = [[0, 0], [PR.w - 2, 0], [PR.w - 2, .8], [0, .8]].map(([dx, dz]) => [X0 + 1 + dx*Math.cos(a) - dz*Math.sin(a), zt + .8 + dx*Math.sin(a) + dz*Math.cos(a)]);   // hinged at the back (x = X0)
+    put([(X0 + X1)/2, PR.y0 + PR.d/2, zt + 4], (k > 0 ? `<g opacity="${f(1 - .8*k)}">` : '') + sqPrismY(pr, PR.y0 + 1, PR.y0 + PR.d - 1, LIDM, 1.1) + (k > 0 ? '</g>' : ''), bbOf([...pr.map(([x, z]) => [x, PR.y0 + 1, z]), ...pr.map(([x, z]) => [x, PR.y0 + PR.d - 1, z])])); }
+  return items;
+}
+function promMech(st){ const X0 = PR.x0, X1 = PR.x0 + PR.w, parts = []; const bx = (a, b, c, d, e, g, m, w = .7) => parts.push({ box: [[a, b, c], [d, e, g]], svg: box(a, b, c, d, e, g, m, toneI, w) });
+  bx(X0 + 2, PR.y0 + 2, 2 + PR.h - 6, X1 - 2, PR.y0 + PR.d - 2, 2 + PR.h - 4.5, matOf('#b8bfc2'));                      // heated block under the 24 positions
+  for (let i = 0; i < 4; i++) bx(X0 + 5 + i*7.5, PR.y0 + 3, 2 + PR.h - 10, X0 + 11 + i*7.5, PR.y0 + PR.d - 3, 2 + PR.h - 6.2, DARK2, .5);   // ASIC boards per column
+  bx(X0 + 3, PR.y0 + 3, 4, X0 + 20, PR.y0 + 18, 26, matOf('#2f3a44'));                                                   // GPU compute
+  bx(X0 + 3, PR.y0 + PR.d - 18, 4, X0 + 18, PR.y0 + PR.d - 3, 14, matOf('#8fa6b8'));                                     // chiller / fans
+  bx(X0 + 24, PR.y0 + 4, 4, X1 - 3, PR.y0 + 16, 12, matOf('#b8bfc2'));                                                   // power supply
+  parts.push({ box: [[X0 + .4, PR.y0 + 4, 14], [X0 + 1.2, PR.y0 + PR.d - 4, 30]], svg: shape(on(PX(X0 + 1), rectUV(PR.y0 + 4, 14, PR.y0 + PR.d - 4, 30)), PCB.m, .7) });
+  return sqSort(parts); }
+
+/* ---------- comparison card ---------- */
+function cmpCard(){ const x0 = 4, w = 110, y0 = 104, y1 = 105.2, z1 = 30; let s = box(x0, y0, 2, x0 + w, y1, z1, PAPER, toneI, 1.1);
+  if (facing([0,1,0])){ const Y = y1 + .06, T = (z, str, size, col = INK) => txY(x0 + w/2, Y, z, str, size, col, 700);
+    s += shape(on(PY(Y - .02), rectUV(x0 + .3, z1 - 4.6, x0 + w - .3, z1 - .3)), '#3d3935', .6) + T(z1 - 3.3, 'MinION Mk1D  |  PromethION 24  (same pore, same chemistry, same library)', 2, '#f6f2e6');
+    [['FLOW CELLS: 1  |  24, EACH INDEPENDENT', INK], ['FLOW CELL: 512 CHANNELS, 2048 WELLS, MIN 800 PORES  |  2675 CHANNELS, MIN 5000 PORES', INK], ['OUTPUT: TENS OF Gb PER FLOW CELL  |  ~6x A MinION FLOW CELL EACH; TERABASES PER RUN', INK],
+     ['RUN: UP TO 72 h  |  UP TO 72 h, POSITIONS START AND STOP SEPARATELY', INK], ['BASECALLING: HOST LAPTOP OR GPU  |  ONBOARD GPU TOWER', INK], ['SIZE: 55 x 13 x 125 mm, 130 g, USB-C  |  BENCHTOP CABINET + COMPUTE', INK],
+     ['ALSO: GridION (5 MinION FLOW CELLS + GPU), PromethION 2 (2 PromethION FLOW CELLS), P48', '#857d6e']].forEach((l, i) => { s += T(z1 - 8 - 2.9*i, l[0], 1.45, l[1]); }); }
+  return s; }
+
+let LB = [];
+function scene(st, m){
+  const k = ease(st.xr || 0), btop = boardTop(0, 0, BX, BY, 2, 5), cs = (a, b) => { const o = []; for (const x of [a[0], b[0]]) for (const y of [a[1], b[1]]) for (const z of [a[2], b[2]]) o.push([x, y, z]); return o; };
+  LB = [];
+  let s = board(0, 0, BX, BY, 2, 5) + castShadow([...on(PX(PR.x0), OUTP()), ...on(PX(PR.x0 + PR.w), OUTP())], 2, btop) + castShadow(cs([MI.x0, MI.y0, 2], [MI.x0 + MI.w, MI.y0 + MI.l, 3.3]), 2, btop) + castShadow(cs([MI.x0 + 12, MI.y0 - 38, 2], [MI.x0 + 34, MI.y0 - 17, 16]), 2, btop) + castShadow(cs([4, 104, 2], [114, 105.2, 30]), 2, btop);
+  let mi = minion(st, m, k); if (k > 0) mi = [...mi, { at: [MI.x0 + 2.7, MI.y0 + 6, 2.6], svg: `<g opacity="${f(k)}">${minionMech(st)}</g>`, box: [[MI.x0, MI.y0, 2.1], [MI.x0 + MI.w, MI.y0 + MI.l, 3.2]] }];
+  s += byDepth([...promethion(st, m, k), ...mi, { box: [[4, 104, 2], [114, 105.3, 30]], svg: cmpCard(), at: [60, 104.6, 16] }]);
+  LB.push({ at: [MI.x0 + MI.w/2, MI.y0 + 5, 3.3 + 2.5*st.lid], text: 'MinION LID', on: st.lid > .05 }, { at: [MI.x0 + 2.5, MI.y0 + 1 + 14*(1 - st.fcT) + 4, 3.4], text: 'MinION FLOW CELL (512 CHANNELS)', on: st.fcT > 0 && st.fcT < 1 }, { at: [MI.x0 + 23, MI.y0 - 36, 14], text: 'LAPTOP: MinKNOW + DORADO', on: st.run },
+    { at: [MI.x0 + MI.w/2, MI.y0 - 8, 2.3], text: 'USB-C', on: false }, { at: [PR.x0 + PR.w, PR.y0 + PR.d/2, 32], text: 'PromethION 24 SCREEN', on: st.run24 }, { at: [PR.x0 + 12, PR.y0 + 8, 2 + PR.h + .6], text: '24 FLOW CELL POSITIONS', on: st.lid24 > .05 });
+  if (k > .6) LB.push({ at: [MI.x0 + 2.7, MI.y0 + 5, 2.6], text: 'ASIC: 512 CHANNELS READ AT ONCE', on: st.run }, { at: [MI.x0 + 2.7, MI.y0 + 8, 3.05], text: 'PELTIER: 10-35 C AMBIENT', on: false }, { at: [PR.x0 + 10, PR.y0 + 10, 20], text: 'GPU COMPUTE', on: st.run24 }, { at: [PR.x0 + 20, PR.y0 + PR.d/2, 2 + PR.h - 5], text: 'HEATED BLOCK + ASICs', on: st.run24 });
+  return s + xrCallouts(LB, [0, BX, 0, 100, 0, 50]);
+}
+let ui;
+function anim(st, secs, step, then){ st.busy = true; let t = 0; ui.animate(dt => { t += dt; const u = Math.min(1, t/secs); step(u); if (u >= 1){ st.busy = false; if (then) then(); return false; } return true; }); }
+function loadMinion(st){ if (st.busy) return ui.flash('One moment'); if (st.fc) return ui.flash('The MinION flow cell is in'); anim(st, 1, u => { st.lid = ease(u); }, () => anim(st, 1.6, u => { st.fcT = ease(u); }, () => { st.fc = 1; anim(st, .8, u => { st.lid = 1 - ease(u); }, () => ui.flash('Flow cell check in MinKNOW: 1420 pores. Primed and loaded as on the flow cell page', 3000)); })); }
+function runMinion(st){ if (st.busy) return ui.flash('One moment'); if (!st.fc) return ui.flash('Insert the flow cell first'); if (st.run) return ui.flash('Already sequencing'); st.run = 1; ui.flash('Sequencing: 512 channels read in real time, basecalled on the laptop, up to 72 h', 3000); runLoop(); }
+function loadProm(st){ if (st.busy) return ui.flash('One moment'); const n = st.p24.filter(Boolean).length; if (n >= 24) return ui.flash('All 24 positions are full');
+  anim(st, 1, u => { st.lid24 = ease(u); }, () => { let i = 0; const add = () => { if (i < 6 && n + i < 24){ st.p24[n + i] = 1; i++; ui.render(); setTimeout(add, 150); } else anim(st, .8, u => { st.lid24 = 1 - ease(u); }, () => ui.flash('Six more flow cells. Each position is primed, loaded and started on its own', 2600)); }; add(); }); }
+function runProm(st){ if (st.busy) return ui.flash('One moment'); if (!st.p24.some(Boolean)) return ui.flash('Load flow cells first'); st.run24 = 1; ui.flash('All loaded positions sequencing; onboard GPUs basecall every channel live', 2600); runLoop(); }
+let loopOn = false; function runLoop(){ if (loopOn) return; loopOn = true; ui.animate(dt => { const st = ui.st; if (st.run) st.gb = Math.min(30, st.gb + dt*.6); if (st.run24) st.gbP = Math.min(24*150, st.gbP + dt*st.p24.filter(Boolean).length*3.5); return true; }); }
+ui = mountFigure({
+  fig:'36', turn:'full', title:'Nanopore devices: MinION Mk1D and PromethION 24', size:[BX, BY, 50], palette:'mint',
+  state:{ lid:0, fcT:0, fc:0, run:0, gb:0, lid24:0, p24: new Array(24).fill(0), run24:0, gbP:0, busy:false },
+  scene,
+  buttons:[ { label:'MinION: insert flow cell', onClick: st => loadMinion(st) }, { label:'MinION: start', onClick: st => runMinion(st) }, { label:'PromethION: load 6 flow cells', onClick: st => loadProm(st) }, { label:'PromethION: start', onClick: st => runProm(st) },
+    { label:'Reset', onClick: st => { if (st.busy) return ui.flash('One moment'); Object.assign(st, { lid:0, fcT:0, fc:0, run:0, gb:0, lid24:0, p24: new Array(24).fill(0), run24:0, gbP:0 }); } },
+    { label:'Nanopore flow cell', onClick: () => { location.href = 'nanopore-flow-cell.html'; } }, { label:'Revio sequencer', onClick: () => { location.href = 'pacbio-revio.html'; } }, { label:'Cover', onClick: () => { location.href = 'index.html'; } } ],
+  stats: st => [ { label:'MinION', small:true, value: st.run ? st.gb.toFixed(1) + ' Gb' : st.fc ? 'ready' : 'empty' }, { label:'PromethION 24', small:true, value: st.run24 ? st.gbP.toFixed(0) + ' Gb' : st.p24.filter(Boolean).length + '/24 loaded' } ],
+  params:(st, q) => { if (q.get('fc') === '1'){ st.fc = 1; st.fcT = 1; } if (q.has('lid')) st.lid = +q.get('lid'); if (q.has('fcT')) st.fcT = +q.get('fcT'); if (q.has('p24')){ const n = +q.get('p24'); for (let i = 0; i < n; i++) st.p24[i] = 1; } if (q.has('lid24')) st.lid24 = +q.get('lid24');
+    if (q.get('run') === '1'){ st.run = 1; st.gb = 12.4; } if (q.get('run24') === '1'){ st.run24 = 1; st.gbP = 820; } },
+});
+xrMount(() => ui, () => '');
+</script></body></html>
