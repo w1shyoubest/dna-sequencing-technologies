@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tissue to Farm: sequencing, 1st to 3rd generation</title>
+<title>DNA Sequencing Technologies: Mechanisms and Workflows</title>
 <style>
 :root{--paper:#f2efe7;--ink:#231e16;--muted:#857d6e;--rule:#ddd6c8;--card:#fbfaf3;--accent:#76a0e2;--accent2:#ef6a4c;--dim:#cfc8b8}
 *{box-sizing:border-box}html,body{margin:0}
@@ -25,51 +25,51 @@ h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute
 footer{margin-top:40px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}footer a{color:var(--muted)}
 @media (max-width:620px){.gen{grid-template-columns:1fr;grid-template-rows:none}.step.start{grid-row:auto;grid-column:auto}.arrow,.arrow2{display:none}.r1,.r2{grid-row:auto}}
 </style></head><body><main>
-<h1>Tissue to Farm</h1>
-<p class="sub" style="margin-bottom:6px;color:var(--ink)">How sequencing works, from Sanger to second and third generation.</p>
-<p class="sub">Not farm to table: tissue to Farm, the UC Davis compute cluster. Hand-drawn figures you can turn round, press and see inside, following a sample from DNA to the FASTQ files that land on the cluster, one page per step. Start at library prep, then pick a chemistry: every page has buttons to the next step and back here.</p>
+<h1>DNA Sequencing Technologies: Mechanisms and Workflows</h1>
+<p class="sub" style="margin-bottom:6px;color:var(--ink)">Interactive figures of first-, second- and third-generation sequencing, from library preparation to data output.</p>
+<p class="sub">Each page is a hand-drawn, three-dimensional figure that can be rotated, operated step by step and viewed in cross-section. The figures follow a sample from extracted DNA to the sequence files delivered to the compute cluster (Farm, UC Davis). Begin with library preparation and select a platform; every page links to the next step and back to this overview.</p>
 
-<h2>First generation: Sanger <span class="tag">sketch</span></h2>
+<h2>First generation: Sanger sequencing <span class="tag">preliminary sketch</span></h2>
 <div class="gen" style="grid-template-columns:1fr 2fr">
-  <a class="step sg" href="sanger.html"><b>0. Sanger sequencing</b><span>Chain termination with dye ddNTPs, capillary electrophoresis, chromatogram. A first sketch, to be built out.</span></a>
+  <a class="step sg" href="sanger.html"><b>0. Sanger sequencing</b><span>Chain termination with dye-labelled dideoxynucleotides, capillary electrophoresis and the resulting chromatogram. Preliminary sketch.</span></a>
 </div>
 
-<h2>Second generation: short reads, read by colour one base per cycle <span class="tag" style="border-color:#43c25c;color:#2e9e48">checked</span></h2>
+<h2>Second generation: short-read sequencing by cyclic imaging <span class="tag" style="border-color:#43c25c;color:#2e9e48">reviewed</span></h2>
 <div class="gen">
-  <a class="step start" href="library-prep.html"><b>1. Library prep</b><span>Fragment, repair, A-tail, ligate adapters, clean up, index (in the adapter or by PCR), QC, pool, denature.</span></a>
+  <a class="step start" href="library-prep.html"><b>1. Library preparation</b><span>Fragmentation, end repair and A-tailing, adapter ligation, clean-up, indexing (in the adapter or by PCR), quality control, pooling and denaturation.</span></a>
   <div class="arrow r1"><svg viewBox="0 0 36 60" preserveAspectRatio="none"><path d="M0 60 C 18 60, 18 30, 36 30" fill="none" stroke="#231e16" stroke-width="1.5"/><path d="M30 25 L36 30 L30 35" fill="none" stroke="#231e16" stroke-width="1.5"/></svg></div>
-  <a class="step ill r1" href="flowcell-closeup.html"><b>2a. Illumina flow cell</b><span>Linear strand on a P5/P7 lawn, bridge amplification into a cluster, sequencing by synthesis, index reads, paired-end turn.</span></a>
+  <a class="step ill r1" href="flowcell-closeup.html"><b>2a. Illumina flow cell</b><span>Hybridisation to the P5/P7 lawn, bridge amplification into clusters, sequencing by synthesis, index reads and the paired-end turnaround.</span></a>
   <div class="arrow2 r1"><svg viewBox="0 0 36 60" preserveAspectRatio="none"><path d="M0 30 L36 30" fill="none" stroke="#231e16" stroke-width="1.5"/><path d="M30 25 L36 30 L30 35" fill="none" stroke="#231e16" stroke-width="1.5"/></svg></div>
-  <a class="step ill r1" href="sequencer-flowcell.html"><b>3a. Illumina sequencer</b><span>Load the flow cell and reagents, run 2 x 150 = 300 cycles, see the fluidics and optics inside. Links across to the AVITI instrument.</span></a>
+  <a class="step ill r1" href="sequencer-flowcell.html"><b>3a. Illumina sequencer</b><span>Loading the flow cell and reagents, a 2 x 150-cycle run, and a cross-section of the fluidics and optics. Linked to the AVITI instrument for comparison.</span></a>
   <div class="arrow r2"><svg viewBox="0 0 36 60" preserveAspectRatio="none"><path d="M0 0 C 18 0, 18 30, 36 30" fill="none" stroke="#231e16" stroke-width="1.5"/><path d="M30 25 L36 30 L30 35" fill="none" stroke="#231e16" stroke-width="1.5"/></svg></div>
-  <a class="step avi r2" href="aviti-sequencing.html"><b>2b. AVITI flow cell</b><span>Library circle (made in a tube, or on the flow cell with Freestyle chemistry) on a surface primer, rolling circle amplification into a polony, sequencing by avidity, signal to base call.</span></a>
+  <a class="step avi r2" href="aviti-sequencing.html"><b>2b. AVITI flow cell</b><span>Circular library on a surface primer, rolling circle amplification into a polony, sequencing by avidity, and the path from signal to base call.</span></a>
   <div class="arrow2 r2"><svg viewBox="0 0 36 60" preserveAspectRatio="none"><path d="M0 30 L36 30" fill="none" stroke="#231e16" stroke-width="1.5"/><path d="M30 25 L36 30 L30 35" fill="none" stroke="#231e16" stroke-width="1.5"/></svg></div>
-  <a class="step avi r2" href="aviti-sequencer.html"><b>3b. AVITI sequencer</b><span>Element's own instrument: two independent flow cell sides, one shared imaging module; polony generation then 300 avidity cycles per side. Links across to the Illumina instrument.</span></a>
+  <a class="step avi r2" href="aviti-sequencer.html"><b>3b. AVITI sequencer</b><span>Two independent flow cell sides sharing one imaging module; polony generation followed by 300 avidity cycles per side. Linked to the Illumina instrument for comparison.</span></a>
 </div>
-<div class="key"><div><i style="background:#76a0e2"></i>Illumina: bridge amplification, labelled nucleotide is read and incorporated</div><div><i style="background:#ef6a4c"></i>AVITI: rolling circle amplification, avidite is read then a plain nucleotide steps</div></div>
+<div class="key"><div><i style="background:#76a0e2"></i>Illumina: bridge amplification; the labelled nucleotide that is imaged is also incorporated</div><div><i style="background:#ef6a4c"></i>AVITI: rolling circle amplification; an avidite is imaged, then an unlabelled nucleotide is incorporated</div></div>
 
-<h2>Third generation: long reads, single molecules <span class="tag" style="border-color:#e2483d;color:#e2483d">on hold: drafts, not yet checked</span></h2>
-<p class="sub" style="margin:-6px 0 12px;font-size:12px">These pages exist but are still being verified; the nanopore flow cell in particular needs more detail. Read them as drafts.</p>
+<h2>Third generation: single-molecule long-read sequencing <span class="tag" style="border-color:#e2483d;color:#e2483d">in preparation: draft, under review</span></h2>
+<p class="sub" style="margin:-6px 0 12px;font-size:12px">These pages are drafts under review and are not yet verified in full; the nanopore flow cell page in particular requires further detail.</p>
 <div class="gen draft3">
-  <a class="step pb r1" href="pacbio-library-prep.html"><b>1a. SMRTbell library prep</b><span>Shear to 15-20 kb, repair + A-tail, hairpin adapters on both ends, nuclease, size select, anneal primer and bind polymerase.</span></a>
+  <a class="step pb r1" href="pacbio-library-prep.html"><b>1a. SMRTbell library preparation</b><span>Shearing to 15-20 kb, repair and A-tailing, hairpin adapters on both ends, nuclease treatment, size selection, primer annealing and polymerase binding.</span></a>
   <div class="arrow2 r1" style="grid-column:2"><svg viewBox="0 0 36 60" preserveAspectRatio="none"><path d="M0 30 L36 30" fill="none" stroke="#231e16" stroke-width="1.5"/><path d="M30 25 L36 30 L30 35" fill="none" stroke="#231e16" stroke-width="1.5"/></svg></div>
-  <a class="step pb r1" href="pacbio-smrt-cell.html"><b>2a. PacBio SMRT Cell + ZMW</b><span>One polymerase on the floor of a 70 nm well; phospholinked nucleotides flash as they are added; passes round the circle give a HiFi consensus read.</span></a>
+  <a class="step pb r1" href="pacbio-smrt-cell.html"><b>2a. PacBio SMRT Cell and zero-mode waveguide</b><span>A single polymerase at the base of a 70 nm well; phospholinked nucleotides fluoresce as they are incorporated; repeated passes around the circular template yield a HiFi consensus read.</span></a>
   <div class="arrow2 r1"><svg viewBox="0 0 36 60" preserveAspectRatio="none"><path d="M0 30 L36 30" fill="none" stroke="#231e16" stroke-width="1.5"/><path d="M30 25 L36 30 L30 35" fill="none" stroke="#231e16" stroke-width="1.5"/></svg></div>
-  <a class="step pb r1" href="pacbio-revio.html"><b>3a. Revio-style sequencer</b><span>Four stages, four SMRT Cells running independently, onboard GPUs building HiFi reads and calling methylation.</span></a>
-  <a class="step ont r2" href="nanopore-library-prep.html"><b>1b. Nanopore library prep</b><span>Optional fragmentation or size selection, end-prep + nick repair, then either the sequencing adapter straight on (one sample) or native barcodes first (many samples), clean up, prime and load.</span></a>
+  <a class="step pb r1" href="pacbio-revio.html"><b>3a. Revio-style sequencer</b><span>Four independent stages for four SMRT Cells, with on-board GPUs generating HiFi reads and methylation calls.</span></a>
+  <a class="step ont r2" href="nanopore-library-prep.html"><b>1b. Nanopore library preparation</b><span>Optional fragmentation or size selection, end preparation and nick repair, then either direct adapter ligation (single sample) or native barcoding followed by adapter ligation (multiplexed), clean-up, priming and loading.</span></a>
   <div class="arrow2 r2" style="grid-column:2"><svg viewBox="0 0 36 60" preserveAspectRatio="none"><path d="M0 30 L36 30" fill="none" stroke="#231e16" stroke-width="1.5"/><path d="M30 25 L36 30 L30 35" fill="none" stroke="#231e16" stroke-width="1.5"/></svg></div>
-  <a class="step ont r2" href="nanopore-flow-cell.html"><b>2b. Nanopore flow cell</b><span>Priming and loading step by step (flow cell check, priming port, draw-back, 800 + 200 uL priming mix, 75 uL library dropwise on SpotON, light shield), then one well: the motor feeds a strand through the pore and the current trace becomes the read.</span></a>
+  <a class="step ont r2" href="nanopore-flow-cell.html"><b>2b. Nanopore flow cell</b><span>Priming and loading step by step (flow cell check, priming port, draw-back, 800 + 200 uL priming mix, 75 uL library dropwise onto the SpotON port, light shield), then a single well: the motor protein feeds one strand through the pore and the current trace is basecalled.</span></a>
   <div class="arrow2 r2"><svg viewBox="0 0 36 60" preserveAspectRatio="none"><path d="M0 30 L36 30" fill="none" stroke="#231e16" stroke-width="1.5"/><path d="M30 25 L36 30 L30 35" fill="none" stroke="#231e16" stroke-width="1.5"/></svg></div>
-  <a class="step ont r2" href="nanopore-device.html"><b>3b. MinION and PromethION</b><span>A pocket MinION on a laptop and a PromethION 24 with onboard GPUs: same pore and chemistry, 1 versus 24 flow cells.</span></a>
+  <a class="step ont r2" href="nanopore-device.html"><b>3b. MinION and PromethION</b><span>A MinION Mk1D connected to a laptop and a PromethION 24 with on-board GPUs: the same pore and chemistry at one and at twenty-four flow cells.</span></a>
 </div>
-<div class="key"><div><i style="background:#f4b829"></i>PacBio HiFi: no amplification, real-time single-molecule reading, consensus of many passes</div><div><i style="background:#93d3b0"></i>Nanopore: a motor protein feeds one strand through a pore; the current trace is the read</div></div>
+<div class="key"><div><i style="background:#f4b829"></i>PacBio HiFi: no amplification; real-time single-molecule reading; consensus of repeated passes</div><div><i style="background:#93d3b0"></i>Nanopore: a motor protein feeds a single strand through a protein pore; the ionic current trace is basecalled</div></div>
 
-<h2>The bookends <span class="tag">in preparation</span></h2>
+<h2>Before and after sequencing <span class="tag">in preparation</span></h2>
 <div class="gen soon" style="grid-template-columns:1fr 36px 1fr">
-  <div class="step"><b>0. Tissue to DNA</b><span>Lysis, extraction, clean-up and QC: what goes into library prep.</span></div>
+  <div class="step"><b>A. From tissue to DNA</b><span>Lysis, extraction, clean-up and quality control: the input to library preparation.</span></div>
   <div class="arrow r1"></div>
-  <div class="step"><b>4. FASTQ / BAM to Farm</b><span>Demultiplexing, the run folder, checksums, and copying the files to the cluster.</span></div>
+  <div class="step"><b>B. From sequence files to the compute cluster</b><span>Demultiplexing, the run folder, checksums and transfer of FASTQ or BAM files to Farm.</span></div>
 </div>
 
-<footer>Made with <a href="https://april-zhu.com/colorfigures">Colorfigures</a>. Personal study notes, not teaching material or manufacturer documentation; corrections welcome. AVITI pages follow Arslan et al., Nat Biotechnol 2024.</footer>
+<footer>Made with <a href="https://april-zhu.com/colorfigures">Colorfigures</a>. A personal study project; not teaching material and not manufacturer documentation. Corrections are welcome. Sources are listed in the repository README.</footer>
 </main></body></html>

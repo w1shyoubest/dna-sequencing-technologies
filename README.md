@@ -1,12 +1,12 @@
-# Tissue to Farm: sequencing, 1st to 3rd generation
+# DNA Sequencing Technologies: Mechanisms and Workflows
 
-Hand-drawn, interactive figures that follow a sample from DNA to the FASTQ files that land on the cluster, one page per step. Covered: a Sanger sketch (first generation); two short-read chemistries, **Illumina** (bridge amplification, sequencing by synthesis) and **Element AVITI** (rolling circle amplification, sequencing by avidity); and two long-read chemistries, **PacBio HiFi** (single-molecule real-time sequencing in zero-mode waveguides, circular consensus) and **Oxford Nanopore** (a motor protein feeds a strand through a pore; the current trace is the read).
+Interactive, hand-drawn three-dimensional figures of first-, second- and third-generation DNA sequencing, following a sample from extracted DNA to the sequence files delivered to the compute cluster (Farm, UC Davis), one page per step. Covered: a Sanger sketch (first generation); two short-read chemistries, **Illumina** (bridge amplification, sequencing by synthesis) and **Element AVITI** (rolling circle amplification, sequencing by avidity); and two long-read chemistries, **PacBio HiFi** (single-molecule real-time sequencing in zero-mode waveguides, circular consensus) and **Oxford Nanopore** (a motor protein feeds a strand through a pore; the current trace is the read).
 
-**Status.** The second-generation pages (library prep, Illumina, AVITI) have been checked against sources and are the finished part. The third-generation pages (PacBio and Nanopore) and the Sanger page are **drafts, in progress and not fully checked**: they are on the site so they can be reviewed, each carries a "Draft" badge, and the nanopore flow cell still needs more detail. Treat their numbers as provisional until this note is removed.
+**Status.** The second-generation pages (library preparation, Illumina, AVITI) have been reviewed against the cited sources. The third-generation pages (PacBio HiFi, Oxford Nanopore) and the Sanger page are **drafts under review and not yet fully verified**; they are published so that they can be examined, each carries a "Draft" badge, and the nanopore flow cell page requires further detail. Their figures should be treated as provisional until this notice is removed.
 
 This is a personal study project: my own notes, drawn as figures. It is not teaching material and not manufacturer documentation; corrections are welcome.
 
-Live site: https://w1shyoubest.github.io/second-generation-sequencing/
+Live site: https://w1shyoubest.github.io/dna-sequencing-technologies/
 
 Open any page in a browser; keep the files in one folder so the buttons that link the pages work. Drag to turn a figure, use the buttons in order, and switch on **Labels** (and **See-through** on the sequencers) to name the parts.
 
