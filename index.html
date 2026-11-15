@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tissue to Farm</title>
+<title>Tissue to Farm: sequencing, 1st to 3rd generation</title>
 <style>
 :root{--paper:#f2efe7;--ink:#231e16;--muted:#857d6e;--rule:#ddd6c8;--card:#fbfaf3;--accent:#76a0e2;--accent2:#ef6a4c;--dim:#cfc8b8}
 *{box-sizing:border-box}html,body{margin:0}
@@ -14,7 +14,7 @@ h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute
 .step:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--ink)}
 .step b{display:block;font-size:14px;margin-bottom:3px}.step span{display:block;font-size:12px;color:var(--muted);line-height:1.4}
 .step.start{grid-row:1/3;grid-column:1;border-color:var(--ink)}
-.step.ill{border-left:6px solid var(--accent)}.step.avi{border-left:6px solid var(--accent2)}.step.pb{border-left:6px solid #f4b829}.step.ont{border-left:6px solid #93d3b0}.step.soon{opacity:.55;box-shadow:none;border-style:dashed;cursor:default}
+.step.ill{border-left:6px solid var(--accent)}.step.avi{border-left:6px solid var(--accent2)}.step.pb{border-left:6px solid #f4b829}.step.ont{border-left:6px solid #93d3b0}.step.sg{border-left:6px solid #d49c1f}.draft3 .step{border-style:dashed;box-shadow:none;opacity:.8}.step.soon{opacity:.55;box-shadow:none;border-style:dashed;cursor:default}
 .arrow{grid-column:2}.arrow2{grid-column:4}.arrow,.arrow2{position:relative;height:100%;min-height:60px}
 .arrow svg,.arrow2 svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .r1{grid-row:1}.r2{grid-row:2}
@@ -26,9 +26,15 @@ footer{margin-top:40px;font-size:11px;letter-spacing:.08em;text-transform:upperc
 @media (max-width:620px){.gen{grid-template-columns:1fr;grid-template-rows:none}.step.start{grid-row:auto;grid-column:auto}.arrow,.arrow2{display:none}.r1,.r2{grid-row:auto}}
 </style></head><body><main>
 <h1>Tissue to Farm</h1>
+<p class="sub" style="margin-bottom:6px;color:var(--ink)">How sequencing works, from Sanger to second and third generation.</p>
 <p class="sub">Not farm to table: tissue to Farm, the UC Davis compute cluster. Hand-drawn figures you can turn round, press and see inside, following a sample from DNA to the FASTQ files that land on the cluster, one page per step. Start at library prep, then pick a chemistry: every page has buttons to the next step and back here.</p>
 
-<h2>Second generation: short reads, read by colour one base per cycle</h2>
+<h2>First generation: Sanger <span class="tag">sketch</span></h2>
+<div class="gen" style="grid-template-columns:1fr 2fr">
+  <a class="step sg" href="sanger.html"><b>0. Sanger sequencing</b><span>Chain termination with dye ddNTPs, capillary electrophoresis, chromatogram. A first sketch, to be built out.</span></a>
+</div>
+
+<h2>Second generation: short reads, read by colour one base per cycle <span class="tag" style="border-color:#43c25c;color:#2e9e48">checked</span></h2>
 <div class="gen">
   <a class="step start" href="library-prep.html"><b>1. Library prep</b><span>Fragment, repair, A-tail, ligate adapters, clean up, index (in the adapter or by PCR), QC, pool, denature.</span></a>
   <div class="arrow r1"><svg viewBox="0 0 36 60" preserveAspectRatio="none"><path d="M0 60 C 18 60, 18 30, 36 30" fill="none" stroke="#231e16" stroke-width="1.5"/><path d="M30 25 L36 30 L30 35" fill="none" stroke="#231e16" stroke-width="1.5"/></svg></div>
@@ -42,8 +48,9 @@ footer{margin-top:40px;font-size:11px;letter-spacing:.08em;text-transform:upperc
 </div>
 <div class="key"><div><i style="background:#76a0e2"></i>Illumina: bridge amplification, labelled nucleotide is read and incorporated</div><div><i style="background:#ef6a4c"></i>AVITI: rolling circle amplification, avidite is read then a plain nucleotide steps</div></div>
 
-<h2>Third generation: long reads, single molecules</h2>
-<div class="gen">
+<h2>Third generation: long reads, single molecules <span class="tag" style="border-color:#e2483d;color:#e2483d">on hold: drafts, not yet checked</span></h2>
+<p class="sub" style="margin:-6px 0 12px;font-size:12px">These pages exist but are still being verified; the nanopore flow cell in particular needs more detail. Read them as drafts.</p>
+<div class="gen draft3">
   <a class="step pb r1" href="pacbio-library-prep.html"><b>1a. SMRTbell library prep</b><span>Shear to 15-20 kb, repair + A-tail, hairpin adapters on both ends, nuclease, size select, anneal primer and bind polymerase.</span></a>
   <div class="arrow2 r1" style="grid-column:2"><svg viewBox="0 0 36 60" preserveAspectRatio="none"><path d="M0 30 L36 30" fill="none" stroke="#231e16" stroke-width="1.5"/><path d="M30 25 L36 30 L30 35" fill="none" stroke="#231e16" stroke-width="1.5"/></svg></div>
   <a class="step pb r1" href="pacbio-smrt-cell.html"><b>2a. PacBio SMRT Cell + ZMW</b><span>One polymerase on the floor of a 70 nm well; phospholinked nucleotides flash as they are added; passes round the circle give a HiFi consensus read.</span></a>

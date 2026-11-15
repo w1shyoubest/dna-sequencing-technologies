@@ -127,4 +127,7 @@ ui = mountFigure({
   params:(st, q) => { if (q.has('step')) st.step = +q.get('step'); if (q.has('u')){ st.u = +q.get('u'); st.anim = true; } },
 });
 xrMount(() => ui, () => '', { labelsOnly:true });
-</script></body></html>
+</script>
+<style>.draft{display:inline-block;margin-left:10px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;border:1.5px solid #e2483d;color:#e2483d;border-radius:999px;padding:2px 9px;vertical-align:middle}</style>
+<script>document.querySelector('header h1').insertAdjacentHTML('afterend','<span class="draft">Draft: in progress, not yet checked</span>');</script>
+</body></html>

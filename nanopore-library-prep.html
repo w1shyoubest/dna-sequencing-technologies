@@ -770,7 +770,10 @@ ui = mountFigure({
   params:(st, q) => { if (q.has('step')) st.step = +q.get('step'); if (q.has('u')){ st.u = +q.get('u'); st.anim = true; } },
 });
 xrMount(() => ui, () => '', { labelsOnly:true });
-</script><style>@media (max-width:560px),(pointer:coarse){#art{filter:none!important}.ctl:has(#wb){display:none!important}}</style><style>@media (max-width:560px){html body .kpad{width:100%;box-sizing:border-box;justify-content:space-between;gap:10px;margin:10px 0 0;padding:0;border:0;background:none;box-shadow:none}
+</script>
+<style>.draft{display:inline-block;margin-left:10px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;border:1.5px solid #e2483d;color:#e2483d;border-radius:999px;padding:2px 9px;vertical-align:middle}</style>
+<script>document.querySelector('header h1').insertAdjacentHTML('afterend','<span class="draft">Draft: in progress, not yet checked</span>');</script>
+<style>@media (max-width:560px),(pointer:coarse){#art{filter:none!important}.ctl:has(#wb){display:none!important}}</style><style>@media (max-width:560px){html body .kpad{width:100%;box-sizing:border-box;justify-content:space-between;gap:10px;margin:10px 0 0;padding:0;border:0;background:none;box-shadow:none}
 html body .kpad .dp{display:flex;gap:8px}html body .kpad .hub{display:none}
 html body .kpad .k{width:46px;height:42px;font-size:14px;border-radius:9px}
 html body .kpad .go{width:auto;height:42px;padding:0 26px;border-radius:999px;flex-direction:row;font-size:13px;box-shadow:0 3px 0 var(--ink),inset 0 -4px 0 rgba(0,0,0,.18)}
