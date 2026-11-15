@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Revio-style long-read sequencer</title>
+<style>.controls .ctl:nth-child(1),.controls .ctl:nth-child(2){display:none!important}</style></head><body>
+<script src="core.js"></script>
+<script>
+/* PacBio Revio-style instrument. From PacBio's Revio page: four independent sequencing stages (up to 4 SMRT Cells at
+   once), 25 M ZMWs per SMRT Cell, 12 h (0.5-5 kb) to 24 h (5-10 kb) to 30 h (20-25 kb) per cell, 70-120 Gb HiFi per
+   cell for 10-25 kb inserts, up to 480 Gb/day, 99.95% read accuracy (Q33), onboard NVIDIA GPUs running DeepConsensus
+   and methylation calling, output hifi_reads.bam; 92.7 W x 91.4 D x 174.5 H cm, 465 kg; the work deck is isolated from
+   the stages so consumables can be loaded while runs continue; sequencing plates carry an NFC tag.
+   Drawn at 0.5 unit per cm (so the cabinet is 46 x 46 x 87 units). The internal layout is an approximation.
+
+   HOW A RUN WORKS
+   1. The SMRT Cell tray (4 cells) and the sequencing plate (reagents, with the polymerase-bound library in its wells)
+      go on the work deck behind the front door.
+   2. The instrument's robot moves each cell to a stage and the library onto it; cells on different stages run
+      independently, so a new cell can start while others are mid-run.
+   3. Each stage has its own optics: lasers excite from below, a camera records the pulses from 25 M ZMWs in real time.
+   4. The onboard GPUs call bases, build HiFi reads (circular consensus) and methylation as the run proceeds; the
+      result for each cell is a hifi_reads.bam.
+
+   PARTS  CASE  cabinet . touch screen . front door (work deck) . status lights . back: grilles, power inlet
+          DECK  work deck plate . SMRT Cell tray (4) . sequencing plate . robot gantry + gripper
+          STAGES 4 stage plates (heated) . 4 optics modules (laser + camera) below them . cell shuttle
+          COMPUTE GPU compute module . power supply . chillers . waste */
+const K = .5, XB = 8, XF = XB + 91.4*K, Y0 = 10, Y1 = Y0 + 92.7*K, ZB = 2, ZT = ZB + 174.5*K, BX = 72, BY = 86;
+const OUT = rrUV(Y0, ZB, Y1, ZT, 2.5);
+const CREAM = '#f6f2e6', RECESS = '#2b2523', SCREENC = '#1d2a26', GRN = '#8af0ae';
+const DOORM = matOf('#f1ede0'), GREY = matOf('#c3cacc'), STEEL = matOf('#aab2b5'), PCB = matOf('#3f8f5a'), CELLM = matOf('#56626d'), PLATE = matOf('#e8e6de');
+const NCELL = 4, CY = [Y0 + 10, Y0 + 19, Y0 + 28, Y0 + 37], ZDECK = ZB + 48, ZSTAGE = ZB + 66;
+const mu = w => `style="stroke-width:${w.toFixed(2)}"`, c01 = v => Math.max(0, Math.min(1, v));
+const FP = (uv, dx = .3) => on(PX(XF + dx), uv);
+const txB = (x,y,z,str,size,col=INK,weight=700) => `<text transform="${txM(P(x,y,z), Dv(0,1,0), Dv(0,0,-1))}" font-size="${size}" fill="${col}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="${weight}" letter-spacing=".04em">${str}</text>`;
+const bbOf = pts => [[0,1,2].map(i => Math.min(...pts.map(p => p[i]))), [0,1,2].map(i => Math.max(...pts.map(p => p[i])))];
+function sqSort(parts){ parts = parts.filter(Boolean); const n = parts.length, scr = parts.map(p => { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const x of [p.box[0][0], p.box[1][0]]) for (const y of [p.box[0][1], p.box[1][1]]) for (const z of [p.box[0][2], p.box[1][2]]){ const q = P(x, y, z); x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); } return [x0, y0, x1, y1]; });
+  const dep = parts.map(p => depthOf(boxMid(p.box))), after = parts.map(() => []), need = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++){ const a = scr[i], b = scr[j]; if (a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]) continue; const o = sepOrder(parts[i], parts[j]); if (o < 0){ after[i].push(j); need[j]++; } else if (o > 0){ after[j].push(i); need[i]++; } }
+  const done = new Array(n).fill(false); let out = ''; for (let c = 0; c < n; c++){ let best = -1, free = false; for (let i = 0; i < n; i++){ if (done[i]) continue; const fr = need[i] === 0; if (best < 0 || (fr && !free) || (fr === free && dep[i] < dep[best])){ best = i; free = fr; } } done[best] = true; out += parts[best].svg; for (const j of after[best]) need[j]--; } return out; }
+function sqPrismY(prof, y0, y1, m, w = 1){ const A = prof.map(([x, z]) => [x, y0, z]), B = prof.map(([x, z]) => [x, y1, z]); let s = loft(A, B, n => toneI(n, m));
+  if (vis([0,1,0])) s += shape(B, toneI([0,1,0], m), .6); else if (vis([0,-1,0])) s += shape(A, toneI([0,-1,0], m), .6);
+  return s + ink(pd([A[0], B[0], B[3], A[3]]), w*.7) + ink(pd([A[1], B[1], B[2], A[2]]), w*.7) + hullInk([...A, ...B], w + .8); }
+const doorProf = a => { const t = a*95*Math.PI/180, c = Math.cos(t), s = Math.sin(t); return [[0,0],[.6,0],[.6,22],[0,22]].map(([dx, dz]) => [XF + .15 + dx*c + dz*s, ZDECK - 3 - dx*s + dz*c]); };
+
+/* ---------- per-cell run state: hours of a 24 h run, HiFi Gb, phase ---------- */
+const HRS = 24, GB = 100;
+const cellPh = c => c.run === 'done' ? 'done' : c.run === 'run' ? (c.h < 1.5 ? 'prime' : 'seq') : c.run === 'idle' ? 'idle' : c.run;
+const gbOf = c => c.run === 'done' ? GB : c.run === 'run' ? Math.round(GB*c01((c.h - 1.5)/(HRS - 1.5))) : 0;
+
+/* ---------- consumables: tray of 4 cells, sequencing plate ---------- */
+const TRAY0 = [XF + 6, Y0 + 30, 2.05], PLATE0 = [XF + 7, Y0 + 4, 2.05];
+const trayPos = t => { const a = TRAY0, b = [XF + 1, Y0 + 10, ZDECK + .05], c = [XF - 12, Y0 + 10, ZDECK + .05]; if (t <= .6){ const u = t/.6; return [a[0] + (b[0]-a[0])*u, a[1] + (b[1]-a[1])*u, a[2] + (b[2]-a[2])*Math.min(1, u*1.5)]; } const u = (t - .6)/.4; return [b[0] + (c[0]-b[0])*u, b[1], b[2]]; };
+const platePos = t => { const a = PLATE0, b = [XF + 1, Y0 + 26, ZDECK + .05], c = [XF - 10, Y0 + 26, ZDECK + .05]; if (t <= .6){ const u = t/.6; return [a[0] + (b[0]-a[0])*u, a[1] + (b[1]-a[1])*u, a[2] + (b[2]-a[2])*Math.min(1, u*1.5)]; } const u = (t - .6)/.4; return [b[0] + (c[0]-b[0])*u, b[1], b[2]]; };
+function tray(st, p, xa, xb){ const a = Math.max(p[0], xa), b = Math.min(p[0] + 10, xb); if (b - a < .05) return '';
+  let s = box(a, p[1], p[2], b, p[1] + 20, p[2] + 1.2, GREY, toneI, .8);
+  st.cells.forEach((c, i) => { if (c.on) return; const y = p[1] + 1.5 + i*4.75, X0 = Math.max(a, p[0] + 2), X1 = Math.min(b, p[0] + 8); if (X1 - X0 < .05) return;
+    s += box(X0, y, p[2] + 1.2, X1, y + 3.6, p[2] + 2, CELLM, toneI, .5) + (X1 - X0 > 5 ? shape(on(PZ(p[2] + 2.03), rectUV(p[0] + 3.2, y + .6, p[0] + 6.8, y + 3)), '#4a3a5a', .3) : ''); });
+  return s; }
+function plate(p, xa, xb){ const a = Math.max(p[0], xa), b = Math.min(p[0] + 8.5, xb); if (b - a < .05) return ''; let s = box(a, p[1], p[2], b, p[1] + 12.8, p[2] + 1.6, PLATE, toneI, .8);
+  for (let i = 0; i < 8; i++) for (let j = 0; j < 12; j++){ const X = p[0] + .9 + i*.95, Y = p[1] + .9 + j*1; if (X > a + .3 && X < b - .3) s += fill(pd(on(PZ(p[2] + 1.63), ellUV(X, Y, .3, .3, 6))), j < 3 ? '#e2a9c4' : '#cfd8da'); }
+  return s; }
+
+/* ---------- screen ---------- */
+function rvScreen(st){ const x = XF + .4, T = (y, z, str, size, col = GRN) => tx(x, y, z, str, size, col, 700); let s = T(Y0 + 23, ZT - 12, 'REVIO . 4 SMRT CELLS . 25M ZMW EACH', 1.1, '#5fae82');
+  st.cells.forEach((c, i) => { const yb = Y0 + 36 - i*8.6, ph = cellPh(c), l1 = ph === 'idle' ? (st.tray ? 'READY' : 'NO CELL') : ph === 'prime' ? 'LOADING LIBRARY' : ph === 'seq' ? `SEQUENCING ${Math.floor(c.h)}/${HRS} H` : ph === 'done' ? 'DONE' : ph.toUpperCase();
+    s += T(yb, ZT - 15.6, 'CELL ' + (i + 1), 1.2, '#f4c430') + T(yb, ZT - 18, l1, 1.2) + T(yb, ZT - 20.3, `${gbOf(c)} Gb HiFi`, 1.2, '#5fae82');
+    s += shape(on(PX(x), rectUV(yb - 3.4, ZT - 23, yb + 3.4, ZT - 22)), '#2f4a40', .3) + (gbOf(c) ? fill(pd(on(PX(x + .01), rectUV(yb - 3.4, ZT - 23, yb - 3.4 + 6.8*gbOf(c)/GB, ZT - 22))), ph === 'done' ? '#4aa3ff' : GRN) : ''); });
+  s += T(Y0 + 23, ZT - 26, st.cells.some(c => c.run === 'run') ? 'GPU: HIFI + 5mC CALLING LIVE' : 'GPU IDLE', 1.1, '#5fae82');
+  return s; }
+
+/* ---------- case ---------- */
+function body(st, m, k){
+  const FRONT = facing([1,0,0]), BACK = facing([-1,0,0]), LEFT = facing([0,1,0]), RIGHT = facing([0,-1,0]); let s = '';
+  if (FRONT) s += fill(pd(on(PX(XF), OUT)), tone([1,0,0], m)); if (BACK) s += fill(pd(on(PX(XB), OUT)), tone([-1,0,0], m)); s += extrude(OUT, XB, XF, m);
+  if (FRONT){ s += shape(FP(rrUV(Y0 + 2, ZDECK - 6, Y1 - 2, ZT - 2, 2), .12), CREAM, 1.2);
+    s += act('screen', shape(FP(rrUV(Y0 + 6, ZT - 29, Y1 - 6, ZT - 8, 1.2), .22), '#3d3935', 1.1) + fill(pd(FP(rectUV(Y0 + 7, ZT - 28, Y1 - 7, ZT - 9), .3)), SCREENC) + rvScreen(st));
+    s += tx(XF + .3, (Y0 + Y1)/2, ZT - 33, 'REVIO-STYLE', 2, INK, 800) + tx(XF + .3, (Y0 + Y1)/2, ZT - 35.4, 'HiFi LONG-READ SEQUENCER', .95, '#857d6e', 700);
+    st.cells.forEach((c, i) => { const y = Y0 + 10 + i*9; s += shape(FP(rrUV(y - 2.5, ZDECK - 9.6, y + 2.5, ZDECK - 8.6, .5), .22), c.run === 'run' ? '#43c25c' : c.run === 'done' ? '#4aa3ff' : '#c9c1b2', .5) + tx(XF + .3, y, ZDECK - 11.2, 'CELL ' + (i + 1), .95, '#857d6e', 700); });
+    const ro = 1 - k;
+    if (st.door > .01 && ro > .02){ const o = FP(rectUV(Y0 + 4, ZDECK - 3, Y1 - 4, ZDECK + 19), .2), tp = trayPos(st.trayT), pp = platePos(st.plateT);
+      const inner = fill(pd(o), RECESS) + box(XF - 30, Y0 + 5, ZDECK - 1, XF - 1, Y1 - 5, ZDECK, STEEL, toneI, .7) + tray(st, tp, XB, XF) + plate(pp, XB, XF) + box(XF - 14, Y0 + 5, ZDECK + 14, XF - 12, Y1 - 5, ZDECK + 16, DARK, toneI, .6);
+      s += `<g opacity="${f(ro)}">` + clipTo(o, inner) + ink(pd(o), 1.6) + '</g>'; }
+    let v = ''; for (let z = ZB + 6; z <= ZB + 30; z += 2.5) v += pd(FP([[Y0 + 6, z], [Y0 + 20, z]], .22), false) + pd(FP([[Y1 - 6, z], [Y1 - 20, z]], .22), false); s += `<path d="${v}" fill="none" stroke="${INK}" stroke-width="1.1" opacity=".7"/>`; }
+  if (BACK){ const bp = (uv, dx = .2) => on(PX(XB - dx), uv); let v = '';
+    for (const [a, b] of [[ZB + 6, ZB + 30], [ZT - 40, ZT - 16]]){ s += shape(bp(rrUV(Y0 + 6, a, Y1 - 6, b, 1.5)), '#3d3935', 1); for (let z = a + 2; z < b; z += 2.5) v += pd(bp([[Y0 + 8, z], [Y1 - 8, z]], .3), false); }
+    s += `<path d="${v}" fill="none" stroke="${INK}" stroke-width="1.2" opacity=".75"/>` + shape(bp(rrUV(Y0 + 16, ZB + 36, Y1 - 16, ZB + 44, 1)), '#f3f0e6', .9) + txB(XB - .3, (Y0 + Y1)/2, ZB + 41.2, 'HiFi SEQUENCER', 1.4, INK, 800) + txB(XB - .3, (Y0 + Y1)/2, ZB + 38.2, 'REAL 93 X 91 X 175 CM, 465 KG, 200-240 V', 1, INK, 700) + shape(bp(rectUV(Y0 + 8, ZB + 34, Y0 + 13, ZB + 38)), RECESS, .9); }
+  if (LEFT){ const sd = tone([0,1,0], m); s += shape(on(PY(Y1 + .15), rrUV(XB + 10, ZT - 40, XF - 10, ZT - 28, 2.5)), mix(sd, '#ffffff', .22), 1) + txY((XB + XF)/2, Y1 + .25, ZT - 36.4, 'REVIO-STYLE', 4.6, mix(sd, '#000000', .45), 800); }
+  if (RIGHT){ let v = ''; for (let z = ZB + 50; z <= ZB + 62; z += 2) v += pd([[XB + 12, Y0 - .15, z], [XF - 12, Y0 - .15, z]], false); s += `<path d="${v}" fill="none" stroke="${INK}" stroke-width="1.1" opacity=".7"/>`; }
+  if (FRONT) s += ink(pd(on(PX(XF), OUT)), 2.2); if (BACK) s += ink(pd(on(PX(XB), OUT)), 2.2);
+  return s + hullInk([...on(PX(XB), OUT), ...on(PX(XF), OUT)], 2.8); }
+
+/* ---------- see-through ---------- */
+let SEQ_LABELS = '';
+function mech(st, k){ const parts = [], put = (b, svg) => parts.push({ box: b, svg }), L = [];
+  const bx = (x0, y0, z0, x1, y1, z1, m, w = .8) => put([[x0, y0, z0], [x1, y1, z1]], box(x0, y0, z0, x1, y1, z1, m, toneI, w));
+  bx(XB + 2, Y0 + 2, ZB + .5, XF - 2, Y1 - 2, ZB + 1.5, STEEL); bx(XB + 2, Y0 + 2, ZDECK - 1, XF - 1, Y1 - 2, ZDECK, STEEL);  // base and deck plates
+  bx(XB + 2, Y0 + 2, ZSTAGE - 1, XF - 16, Y1 - 2, ZSTAGE, STEEL);                                                      // stage floor
+  // four stages with their optics below, the cell in place while it runs
+  st.cells.forEach((c, i) => { const y = CY[i], run = c.run === 'run';
+    bx(XB + 14, y - 3.5, ZSTAGE, XB + 24, y + 3.5, ZSTAGE + 1.4, run ? matOf('#ffd9b0') : GREY, .6);
+    if (c.on) put([[XB + 15, y - 2.6, ZSTAGE + 1.4], [XB + 23, y + 2.6, ZSTAGE + 2.3]], box(XB + 15, y - 2.6, ZSTAGE + 1.4, XB + 23, y + 2.6, ZSTAGE + 2.2, CELLM, toneI, .5) + shape(on(PZ(ZSTAGE + 2.23), rectUV(XB + 16.2, y - 1.8, XB + 21.8, y + 1.8)), run ? '#5b3a7a' : '#4a3a5a', .3));
+    bx(XB + 16, y - 2.5, ZSTAGE - 9, XB + 22, y + 2.5, ZSTAGE - 1, matOf('#3d3935'));                                       // objective + camera
+    bx(XB + 4, y - 2, ZSTAGE - 8, XB + 14, y + 2, ZSTAGE - 4, matOf(run ? '#ff8a3d' : '#a23a30'), .6);                        // laser
+    put([[XB + 14, y - .4, ZSTAGE - 6.4], [XB + 19, y + .4, ZSTAGE - 5.6]], `<path d="${pd([[XB + 14, y, ZSTAGE - 6], [XB + 19, y, ZSTAGE - 6]], false)}" fill="none" stroke="${run ? '#ff6a2a' : '#5a4a46'}" ${mu(.8)}/>`);
+    L.push({ at: [XB + 24, y, ZSTAGE + 1.4], text: 'STAGE ' + (i + 1), on: run }, ...(i === 0 ? [{ at: [XB + 19, y, ZSTAGE - 9], text: 'CAMERA + OBJECTIVE (ONE PER STAGE)', on: run }, { at: [XB + 4, y, ZSTAGE - 6], text: 'LASERS', on: run }] : [])); });
+  // the robot over the deck: gantry rail along y, carriage at the cell it moves
+  bx(XB + 6, Y0 + 3, ZDECK + 15, XB + 8, Y1 - 3, ZDECK + 17, STEEL, .6); bx(XF - 4, Y0 + 3, ZDECK + 15, XF - 2, Y1 - 3, ZDECK + 17, STEEL, .6);
+  bx(XB + 6, st.ry - 2, ZDECK + 17, XF - 2, st.ry + 2, ZDECK + 19, GREY, .6); bx(st.rx - 2.5, st.ry - 2.5, ZDECK + 8, st.rx + 2.5, st.ry + 2.5, ZDECK + 17, DARK, .6);
+  L.push({ at: [st.rx, st.ry, ZDECK + 19], text: 'ROBOT: CELLS AND LIBRARY TO THE STAGES', on: st.moving });
+  // deck consumables when inside
+  const tp = trayPos(st.trayT), pp = platePos(st.plateT);
+  if (tp[0] < XF) put([[Math.max(XB, tp[0]), tp[1], tp[2]], [Math.min(XF, tp[0] + 10), tp[1] + 20, tp[2] + 2.1]], tray(st, tp, XB, XF)); if (pp[0] < XF) put([[Math.max(XB, pp[0]), pp[1], pp[2]], [Math.min(XF, pp[0] + 8.5), pp[1] + 12.8, pp[2] + 1.7]], plate(pp, XB, XF));
+  if (st.trayT > .99) L.push({ at: [tp[0] + 5, tp[1] + 10, tp[2] + 2], text: 'SMRT CELL TRAY', on: false }); if (st.plateT > .99) L.push({ at: [pp[0] + 4, pp[1] + 6, pp[2] + 1.7], text: 'SEQUENCING PLATE (NFC TAG)', on: false });
+  // compute and power below the deck; chillers at the back
+  bx(XB + 4, Y0 + 6, ZB + 2, XB + 24, Y0 + 26, ZB + 16, matOf('#2f3a44')); L.push({ at: [XB + 24, Y0 + 16, ZB + 14], text: 'GPU MODULE: HIFI + METHYLATION CALLING', on: st.cells.some(c => c.run === 'run') });
+  bx(XB + 4, Y1 - 24, ZB + 2, XB + 22, Y1 - 6, ZB + 10, matOf('#b8bfc2')); L.push({ at: [XB + 22, Y1 - 15, ZB + 9], text: 'POWER SUPPLY', on: false });
+  bx(XB + 26, Y0 + 6, ZB + 2, XF - 6, Y0 + 20, ZB + 14, matOf('#8fa6b8')); L.push({ at: [XF - 6, Y0 + 13, ZB + 12], text: 'CHILLER', on: false });
+  put([[XB + 28 - 3.2, Y1 - 14 - 3.2, ZB + 2], [XB + 28 + 3.2, Y1 - 14 + 3.2, ZB + 26]], cyl(XB + 28, Y1 - 14, ZB + 2, ZB + 24, 3, matOf('#d9b866'), toneI, .5, 18) + `<g opacity=".5">${cyl(XB + 28, Y1 - 14, ZB + 2, ZB + 26, 3.3, CLEAR, toneI, .8, 18)}</g>`); L.push({ at: [XB + 31, Y1 - 14, ZB + 10], text: 'WASTE', on: false });
+  put([[XB + .4, Y0 + 6, ZDECK + 20], [XB + 1.2, Y1 - 6, ZT - 6]], shape(on(PX(XB + 1), rectUV(Y0 + 6, ZDECK + 20, Y1 - 6, ZT - 6)), PCB.m, .7)); L.push({ at: [XB + 1, Y0 + 12, ZT - 10], text: 'MAIN BOARD', on: false });
+  SEQ_LABELS = k <= .6 ? '' : xrCallouts(L, [XB, XF + 4, Y0, Y1, ZB, ZT]);
+  return sqSort(parts); }
+
+function scene(st, m){
+  const FRONT = facing([1,0,0]), k = ease(st.xr || 0), btop = boardTop(0, 0, BX, BY, 2, 5);
+  const cs = (a, b) => { const o = []; for (const x of [a[0], b[0]]) for (const y of [a[1], b[1]]) for (const z of [a[2], b[2]]) o.push([x, y, z]); return o; };
+  let s = board(0, 0, BX, BY, 2, 5) + castShadow([...on(PX(XB), OUT), ...on(PX(XF), OUT)], 2, btop);
+  const tp = trayPos(st.trayT), pp = platePos(st.plateT);
+  if (st.trayT < .05) s += castShadow(cs(tp, [tp[0] + 10, tp[1] + 20, tp[2] + 2]), 2, btop); if (st.plateT < .05) s += castShadow(cs(pp, [pp[0] + 8.5, pp[1] + 12.8, pp[2] + 1.6]), 2, btop);
+  let bd = body(st, m, k); if (k > 0) bd = xrGhost(bd, '', k, OUT, XB, XF, m) + `<g opacity="${f(k)}">${mech(st, k)}</g>`;
+  const fade = svg => k > 0 ? `<g opacity="${f(1 - .8*k)}">${svg}</g>` : svg, items = [{ box: [[XB, Y0, ZB], [XF, Y1, ZT]], svg: bd }];
+  { const pr = doorProf(st.door), closed = st.door < .02 && FRONT; let d = sqPrismY(pr, Y0 + 4, Y1 - 4, DOORM, 1.1);
+    if (closed) d += shape(on(PX(XF + .8), rrUV((Y0 + Y1)/2 - 4, ZDECK - 1.5, (Y0 + Y1)/2 + 4, ZDECK - .5, .5)), RECESS, .5) + tx(XF + .81, (Y0 + Y1)/2, ZDECK + 10, 'WORK DECK', 1.5, '#857d6e', 700) + tx(XF + .81, (Y0 + Y1)/2, ZDECK + 7.6, 'SMRT CELLS + SEQUENCING PLATE', .95, '#857d6e', 700);
+    items.push({ box: bbOf([...pr.map(([x, z]) => [Math.max(x, XF + .01), Y0 + 4, z]), ...pr.map(([x, z]) => [Math.max(x, XF + .01), Y1 - 4, z])]), svg: act('door', fade(d)) }); }
+  if (tp[0] + 10 > XF + .05) items.push({ box: [[Math.max(XF, tp[0]), tp[1], tp[2]], [tp[0] + 10, tp[1] + 20, tp[2] + 2.1]], svg: act('tray', tray(st, tp, XF, 1e9)) });
+  if (pp[0] + 8.5 > XF + .05) items.push({ box: [[Math.max(XF, pp[0]), pp[1], pp[2]], [pp[0] + 8.5, pp[1] + 12.8, pp[2] + 1.7]], svg: act('plate', plate(pp, XF, 1e9)) });
+  s += sqSort(items);
+  if (k > .6) s += SEQ_LABELS; else { const L = []; if (FRONT){ L.push({ at: [XF + .4, Y0 + 12, ZT - 10], text: 'TOUCH SCREEN: 4 CELLS', on: st.cells.some(c => c.run === 'run') }, { at: [XF + .8, Y1 - 10, ZDECK + 12], text: 'WORK DECK DOOR', on: st.door > .05 }); }
+    if (st.trayT < .05) L.push({ at: [tp[0] + 10, tp[1] + 18, tp[2] + 2], text: 'SMRT CELL TRAY: 4 CELLS', on: false }); if (st.plateT < .05) L.push({ at: [pp[0] + 8.5, pp[1] + 11, pp[2] + 1.6], text: 'SEQUENCING PLATE: REAGENTS + LIBRARY', on: false }); s += xrCallouts(L, [XB, XF + 4, Y0, Y1, ZB, ZT]); }
+  return s; }
+
+/* ---------- behaviour ---------- */
+let ui, loopOn = false;
+function chain(st, steps, done){ let i = 0, t = 0; st.busy = true; ui.animate(dt => { const stp = steps[i]; t += dt; const u = Math.min(1, t / stp[0]); stp[1](ease(u)); if (u >= 1){ i++; t = 0; if (i >= steps.length){ st.busy = false; if (done) done(); return false; } } return true; }); }
+const blocked = st => st.busy ? (ui.flash('One moment'), true) : false;
+function loadTray(st){ if (blocked(st)) return; if (st.tray) return ui.flash('The tray is already on the deck'); chain(st, [[.5, u => st.door = u], [1.0, u => st.trayT = .6*u], [.6, u => st.trayT = .6 + .4*u], ...(st.plate ? [[.5, u => st.door = 1 - u]] : [])], () => { st.tray = 1; }); }
+function loadPlate(st){ if (blocked(st)) return; if (st.plate) return ui.flash('The plate is already on the deck'); chain(st, [...(st.door < .5 ? [[.5, u => st.door = u]] : []), [1.0, u => st.plateT = .6*u], [.6, u => st.plateT = .6 + .4*u], [.5, u => st.door = 1 - u]], () => { st.plate = 1; }); }
+function startCell(st, i){ if (blocked(st)) return; const c = st.cells[i]; if (!st.tray) return ui.flash('Load the SMRT Cell tray first'); if (!st.plate) return ui.flash('Load the sequencing plate first'); if (c.run !== 'idle') return ui.flash('Cell ' + (i + 1) + (c.run === 'done' ? ' is finished' : ' is running'));
+  st.moving = true; const y = CY[i]; chain(st, [[.6, u => { st.rx = XF - 12 + ( XF - 7 - (XF - 12))*u; st.ry = Y0 + 10 + (Y0 + 10 + 1.5 + i*4.75 + 1.8 - (Y0 + 10))*u; }], [.5, u => { st.ry = st.ry + (y - st.ry)*u; st.rx = XF - 7 + (XB + 19 - (XF - 7))*u; }]], () => { c.on = 1; c.run = 'run'; c.h = 0; st.moving = false; ui.flash('Cell ' + (i + 1) + ' on stage ' + (i + 1) + ': library loaded, 24 h run starts; other cells can start any time', 3000); runLoop(); }); }
+function runLoop(){ if (loopOn) return; loopOn = true; ui.animate(dt => { let busy = false; for (const c of ui.st.cells){ if (c.run !== 'run') continue; busy = true; c.h += dt*2.4; if (c.h >= HRS){ c.h = HRS; c.run = 'done'; ui.flash('A cell finished: ~100 Gb of HiFi reads, Q30+, in hifi_reads.bam', 2800); } } if (!busy) loopOn = false; return busy; }); }
+function unloadAll(st){ if (blocked(st)) return; if (st.cells.some(c => c.run === 'run')) return ui.flash('A cell is still running'); if (!st.tray && !st.plate) return ui.flash('Nothing to unload');
+  chain(st, [[.5, u => st.door = u], ...(st.plate ? [[.6, u => st.plateT = 1 - .4*u], [1.0, u => st.plateT = .6*(1 - u)]] : []), ...(st.tray ? [[.6, u => st.trayT = 1 - .4*u], [1.0, u => st.trayT = .6*(1 - u)]] : []), [.5, u => st.door = 1 - u]], () => { st.tray = st.plate = 0; st.cells.forEach(c => { c.on = 0; c.run = 'idle'; c.h = 0; }); }); }
+ui = mountFigure({
+  fig:'33', turn:'full', title:'Revio-style long-read sequencer (PacBio HiFi)',
+  size:[BX, BY, ZT + 2], center:[BX/2 - 4, BY/2], palette:'mustard',
+  state:{ door:0, tray:0, plate:0, trayT:0, plateT:0, busy:false, moving:false, rx: XF - 12, ry: Y0 + 46, cells: [0, 1, 2, 3].map(() => ({ on:0, run:'idle', h:0 })) },
+  scene,
+  buttons:[ { label:'Load SMRT Cell tray', onClick: st => loadTray(st) }, { label:'Load sequencing plate', onClick: st => loadPlate(st) },
+    { label:'Start a cell', choices: st => st.cells.map((c, i) => ({ label:'Cell ' + (i + 1), current: c.run === 'run', disabled: c.run === 'done', why: 'Cell ' + (i + 1) + ' is finished', onClick: st => startCell(st, i) })) },
+    { label:'Unload', onClick: st => unloadAll(st) },
+    { label:'SMRT Cell + ZMW', onClick: () => { location.href = 'pacbio-smrt-cell.html'; } }, { label:'SMRTbell prep', onClick: () => { location.href = 'pacbio-library-prep.html'; } },
+    { label:'Illumina sequencer', onClick: () => { location.href = 'sequencer-flowcell.html'; } }, { label:'Cover', onClick: () => { location.href = 'index.html'; } } ],
+  stats: st => [ { label:'Cells running', value: st.cells.filter(c => c.run === 'run').length }, { label:'HiFi so far', small:true, value: st.cells.reduce((a, c) => a + gbOf(c), 0) + ' Gb' }, { label:'Finished', small:true, value: st.cells.filter(c => c.run === 'done').length + '/4' } ],
+  acts:{ door: st => st.tray ? unloadAll(st) : loadTray(st), tray: st => loadTray(st), plate: st => loadPlate(st), screen: st => startCell(st, st.cells.findIndex(c => c.run === 'idle')) },
+  params:(st, q) => { if (q.get('tray') === '1'){ st.tray = 1; st.trayT = 1; } if (q.get('plate') === '1'){ st.plate = 1; st.plateT = 1; } for (const k of ['door', 'trayT', 'plateT']) if (q.has(k)) st[k] = +q.get(k);
+    if (q.has('cells')) q.get('cells').split(',').forEach((v, i) => { const c = st.cells[i]; if (!c) return; if (v === 'run'){ c.on = 1; c.run = 'run'; c.h = 10; } else if (v === 'done'){ c.on = 1; c.run = 'done'; c.h = HRS; } });
+    if (st.cells.some(c => c.run === 'run')) setTimeout(runLoop, 0); },
+});
+xrMount(() => ui, () => '');
+</script></body></html>

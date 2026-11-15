@@ -14,7 +14,7 @@ h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute
 .step:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--ink)}
 .step b{display:block;font-size:14px;margin-bottom:3px}.step span{display:block;font-size:12px;color:var(--muted);line-height:1.4}
 .step.start{grid-row:1/3;grid-column:1;border-color:var(--ink)}
-.step.ill{border-left:6px solid var(--accent)}.step.avi{border-left:6px solid var(--accent2)}
+.step.ill{border-left:6px solid var(--accent)}.step.avi{border-left:6px solid var(--accent2)}.step.pb{border-left:6px solid #f4b829}.step.soon{opacity:.55;box-shadow:none;border-style:dashed;cursor:default}
 .arrow{grid-column:2}.arrow2{grid-column:4}.arrow,.arrow2{position:relative;height:100%;min-height:60px}
 .arrow svg,.arrow2 svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .r1{grid-row:1}.r2{grid-row:2}
@@ -42,24 +42,25 @@ footer{margin-top:40px;font-size:11px;letter-spacing:.08em;text-transform:upperc
 </div>
 <div class="key"><div><i style="background:#76a0e2"></i>Illumina: bridge amplification, labelled nucleotide is read and incorporated</div><div><i style="background:#ef6a4c"></i>AVITI: rolling circle amplification, avidite is read then a plain nucleotide steps</div></div>
 
+<h2>Third generation: long reads, single molecules</h2>
+<div class="gen">
+  <a class="step start pb" href="pacbio-library-prep.html"><b>1. SMRTbell library prep</b><span>Short-read eliminator, shear to 15-20 kb, repair + A-tail, hairpin adapters on both ends, nuclease, size select, anneal primer and bind polymerase.</span></a>
+  <div class="arrow r1"><svg viewBox="0 0 36 60" preserveAspectRatio="none"><path d="M0 60 C 18 60, 18 30, 36 30" fill="none" stroke="#231e16" stroke-width="1.5"/><path d="M30 25 L36 30 L30 35" fill="none" stroke="#231e16" stroke-width="1.5"/></svg></div>
+  <a class="step pb r1" href="pacbio-smrt-cell.html"><b>2a. PacBio SMRT Cell + ZMW</b><span>One polymerase on the floor of a 70 nm well; phospholinked nucleotides flash as they are added; passes round the circle give a HiFi consensus read.</span></a>
+  <div class="arrow2 r1"><svg viewBox="0 0 36 60" preserveAspectRatio="none"><path d="M0 30 L36 30" fill="none" stroke="#231e16" stroke-width="1.5"/><path d="M30 25 L36 30 L30 35" fill="none" stroke="#231e16" stroke-width="1.5"/></svg></div>
+  <a class="step pb r1" href="pacbio-revio.html"><b>3a. Revio-style sequencer</b><span>Four stages, four SMRT Cells running independently, onboard GPUs building HiFi reads and calling methylation.</span></a>
+  <div class="arrow r2"></div>
+  <div class="step r2 soon"><b>2b. Oxford Nanopore</b><span>A strand threads through a protein pore; the ionic current changes with the bases in the pore. In preparation.</span></div>
+  <div class="arrow2 r2"></div>
+  <div class="step r2 soon"><b>3b. Nanopore device</b><span>In preparation.</span></div>
+</div>
+<div class="key"><div><i style="background:#f4b829"></i>PacBio HiFi: no amplification, real-time single-molecule reading, consensus of many passes</div></div>
+
 <h2>The bookends <span class="tag">in preparation</span></h2>
 <div class="gen soon" style="grid-template-columns:1fr 36px 1fr">
   <div class="step"><b>0. Tissue to DNA</b><span>Lysis, extraction, clean-up and QC: what goes into library prep.</span></div>
   <div class="arrow r1"></div>
-  <div class="step"><b>4. FASTQ to Farm</b><span>Demultiplexing, the run folder, checksums, and copying the files to the cluster.</span></div>
-</div>
-
-<h2>Third generation: long reads, single molecules <span class="tag">in preparation</span></h2>
-<div class="gen soon">
-  <div class="step start"><b>1. Long-read library prep</b><span>High-molecular-weight DNA, no fragmentation to short pieces, adapters for each platform.</span></div>
-  <div class="arrow r1"></div>
-  <div class="step r1"><b>2a. PacBio HiFi</b><span>Circular consensus: a polymerase in a zero-mode waveguide reads the same molecule many times.</span></div>
-  <div class="arrow2 r1"></div>
-  <div class="step r1"><b>3a. PacBio instrument</b><span>Coming later.</span></div>
-  <div class="arrow r2"></div>
-  <div class="step r2"><b>2b. Oxford Nanopore</b><span>A strand threads through a protein pore; the ionic current changes with the bases in the pore.</span></div>
-  <div class="arrow2 r2"></div>
-  <div class="step r2"><b>3b. Nanopore device</b><span>Coming later.</span></div>
+  <div class="step"><b>4. FASTQ / BAM to Farm</b><span>Demultiplexing, the run folder, checksums, and copying the files to the cluster.</span></div>
 </div>
 
 <footer>Made with <a href="https://april-zhu.com/colorfigures">Colorfigures</a>. Personal study notes, not teaching material or manufacturer documentation; corrections welcome. AVITI pages follow Arslan et al., Nat Biotechnol 2024.</footer>

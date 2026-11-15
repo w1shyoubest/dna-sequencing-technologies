@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SMRT Cell and ZMW</title>
+<style>.controls .ctl:nth-child(1),.controls .ctl:nth-child(2){display:none!important}</style></head><body>
+<script src="core.js"></script>
+<script>
+/* PacBio HiFi: a SMRT Cell on the bench and ONE zero-mode waveguide (ZMW) cut open, at nanometre scale.
+   Sources: PacBio "How HiFi sequencing works"; Eid et al., Science 2009 (real-time sequencing from single polymerase
+   molecules in ZMWs); Levene et al., Science 2003 (ZMWs). ZMW: a hole ~70 nm wide and ~100 nm deep in an aluminium
+   film on a glass (silica) base; observation volume ~20 zeptolitres. Drawn at 0.5 unit per nm; the molecules are
+   drawn about 2x larger than that so they can be seen.
+
+   HOW IT REALLY WORKS
+   1. LOAD: the SMRTbell with its primer and polymerase (made at library prep) diffuses into a ZMW and the polymerase is
+      fixed to the glass floor (biotin-streptavidin). One polymerase, one template, per well.
+   2. LIGHT: lasers shine up through the glass. The hole is far narrower than the wavelength, so light cannot propagate
+      up it: only the bottom ~30 nm is lit. Nucleotides floating higher up stay dark.
+   3. PHOSPHOLINKED NUCLEOTIDES: each dNTP carries its dye on the TERMINAL PHOSPHATE, one colour per base. When the
+      polymerase holds the matching one in its active site for a few ms, the dye sits in the lit zone and flashes: a
+      pulse, recorded by the camera under the glass. On incorporation the dye leaves with the pyrophosphate, so the
+      strand stays unlabelled and natural.
+   4. REAL TIME: the sequence is the order of the pulse colours. Pulse width and the gap to the next pulse (interpulse
+      duration) report the polymerase's kinetics; a methylated base slows the polymerase, which is how 5mC is called.
+   5. CIRCULAR CONSENSUS: the template is a circle, so the polymerase goes round and round: each pass gives a subread of
+      the insert (forward, then reverse). Single passes have ~5-15% errors; aligning the passes and taking the
+      consensus gives a HiFi read, Q30+ (>= 99.9%) after several passes, with no amplification at any point. */
+const BX = 160, BY = 150, SZ = 8, KQ = Math.sqrt(1.5);
+const NM = .7;                                                      // units per nanometre for the ZMW itself
+const ZX0 = 60, ZX1 = 136, ZY0 = 24, ZY1 = 124, ZG = 10, ZF = 100*NM;  // ZMW block: glass ZG thick, film ZF thick (100 nm)
+const HR = 35*NM, HC = [ZX1 - 32, (ZY0 + ZY1)/2];                   // hole radius (70 nm wide) and centre; the hole is cut open toward +x
+const ZF0 = SZ + ZG, ZT = ZF0 + ZF;                                  // film bottom (= hole floor) and film top
+const BASES = 'ACGT', BCOL = ['#43c25c', '#4aa3ff', '#f4c430', '#e2483d'];
+const ALU = matOf('#9ea7ad'), GLASS = matOf('#d9eef1'), PAPER = matOf('#fbfaf3'), HP = '#8a5cd6', PRIM = '#55504a', PHOS = '#ff9f43', SUGAR = '#efe6cf', NEW = '#2f6fbf';
+const NI = 14, NA = 4, NL = NI + NA;                                 // insert bases per pass and adapter beads per pass in the ring (schematic)
+const INS = Array.from({length:NI}, (_, i) => (i*7 + ((i*i) >> 1) + 3*(i % 5)) % 4), METH = 6;   // the 5mC position in the insert
+const lerp = (a, b, t) => a.map((v, i) => v + (b[i] - v)*t), c01 = v => Math.max(0, Math.min(1, v)), add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const mu = w => `style="stroke-width:${w.toFixed(2)}"`;
+const bead = (p, r, col, w = .5, sc = INK) => { const q = P(...p); return `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${f(r*KQ)}" fill="${col}" stroke="${sc}" stroke-width="${w}"/>`; };
+const halo = (p, r, col, op) => { const q = P(...p); return `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${f(r*KQ)}" fill="${col}" opacity="${op.toFixed(2)}"/>`; };
+const note = (p, str, col = INK, size = 3) => { const q = P(...p); return `<text x="${f(q[0])}" y="${f(q[1])}" font-size="${size}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="800" fill="${col}" stroke="#f2efe7" style="stroke-width:.9;paint-order:stroke">${str}</text>`; };
+const star = (p, r, col, lit = 0) => { const q = P(...p), R = r*KQ; let d = ''; for (let i = 0; i < 16; i++){ const a = i*Math.PI/8, rr = i % 2 ? R*.5 : R; d += (i ? 'L' : 'M') + f(q[0] + rr*Math.sin(a)) + ' ' + f(q[1] - rr*Math.cos(a)); }
+  return (lit > 0 ? `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${f(R*2.4)}" fill="${col}" opacity="${(.5*lit).toFixed(2)}"/>` : '') + `<path d="${d}Z" fill="${col}" stroke="${INK}" stroke-width=".5" stroke-linejoin="round"/><circle cx="${f(q[0])}" cy="${f(q[1])}" r="${f(R*.28)}" fill="#ffffff"/>`; };
+const seg = (pts, col, w, op = 1) => `<path d="${pd(pts, false)}" fill="none" stroke="${col}" ${mu(w)} stroke-linecap="round" stroke-linejoin="round" opacity="${f(op)}"/>`;
+function chain(pts, cols, rib = PRIM, r = 1.1){ if (!pts.length) return ''; const d = pd(pts, false);
+  return (pts.length > 1 ? `<path d="${d}" fill="none" stroke="${INK}" ${mu(1.7)} stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${rib}" ${mu(1.2)} stroke-linecap="round" stroke-linejoin="round"/>` : '') + pts.map((p, i) => [depthOf(p), bead(p, r, cols[i], 1, rib)]).sort((a, b) => a[0] - b[0]).map(x => x[1]).join(''); }
+// a phospholinked dNTP: base + sugar + three phosphates, the dye on the LAST phosphate; lit = dye flashing
+function pdntp(p, b, lit = 0, tailOnly = false){ const col = BCOL[b], ph = [0, 1, 2].map(i => add(p, [0, -1.8 - 1.5*i, -.4 - .35*i])), dye = add(ph[2], [0, -2.2, -.6]);
+  let s = seg([tailOnly ? ph[0] : p, ...ph, dye], INK, .5) + ph.map(q => bead(q, .75, PHOS, .4)).join('') + star(dye, 2.2, col, lit);
+  if (!tailOnly) s += bead(add(p, [0, -.9, -.15]), .8, SUGAR, .4) + bead(p, 1.5, col, 1);
+  return s; }
+function clampAt(c, m, R){ const pts = []; for (let i = 0; i <= 24; i++){ const t = (48 + 264*i/24)*Math.PI/180; pts.push(P(...[0, 1, 2].map(j => c[j] + CAM_R[j]*R*.58*Math.sin(t) + CAM_U[j]*R*.58*Math.cos(t)))); }
+  const d = 'M' + pts.map(q => f(q[0]) + ' ' + f(q[1])).join('L'), st = (col, w) => `<path d="${d}" fill="none" stroke="${col}" style="stroke-width:${(w*R*KQ).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  return `<g opacity=".82">${st(INK, .56)}${st(m.m, .5)}${st(m.l, .2)}</g>`; }
+
+/* ---------- the SMRT Cell on the bench ---------- */
+function smrtCell(st){
+  const x0 = 8, y0 = 46, w = 34, h = 30, z1 = 4.6, zt = z1 + .04;
+  let s = box(x0, y0, 2, x0 + w, y0 + h, z1, matOf('#56626d'), toneI, 1.2) + shape(on(PZ(zt), rrUV(x0 + 6, y0 + 4, x0 + w - 6, y0 + h - 4, 1)), '#2b2523', .9);
+  s += shape(on(PZ(zt + .02), rectUV(x0 + 8, y0 + 6, x0 + w - 8, y0 + h - 6)), st.run ? '#5b3a7a' : '#4a3a5a', .5);
+  let d = ''; for (let i = 0; i < 9; i++) for (let j = 0; j < 9; j++){ const X = x0 + 9 + i*2, Y = y0 + 7 + j*2; d += pd(on(PZ(zt + .03), ellUV(X, Y, .28, .28, 6))); }
+  s += fill(d, st.run ? '#c9a7ea' : '#8f7fa6');
+  for (const v of [y0 + 1.5, y0 + h - 1.5]) for (let i = 0; i < 6; i++) s += fill(pd(on(PZ(zt + .02), rectUV(x0 + 7 + i*4, v - .4, x0 + 9.5 + i*4, v + .4))), '#f2efe7');
+  s += `<text transform="${txM(P(x0 + 3, y0 + h/2, zt + .02), Dv(0,-1,0), Dv(1,0,0))}" font-size="2.2" fill="#f2efe7" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="800">SMRT CELL . 25M ZMW</text>`;
+  const sx = x0 + 17, sy = y0 + 15; s += ink(pd(on(PZ(zt + .05), rectUV(sx - .6, sy - .6, sx + .6, sy + .6))), 1.1);
+  s += `<path d="${pd([[sx + .6, sy - .6, zt], [ZX0, ZY0, SZ]], false)}${pd([[sx + .6, sy + .6, zt], [ZX0, ZY1, SZ]], false)}" fill="none" stroke="${INK}" stroke-width="1" stroke-dasharray="${f(3*INK_K)} ${f(3*INK_K)}" opacity=".7"/>`;
+  AV.push({ at: [x0 + w/2, y0 + h - 3, zt], text: 'SMRT CELL: MILLIONS OF ZMWs', on: false }, { at: [x0 + w - 7, y0 + 7, zt], text: 'ONE ZMW (TO SCALE: 70 nm)', on: false });
+  return s;
+}
+
+/* ---------- the ZMW block: glass base, aluminium film with holes, the near hole cut open ---------- */
+function zmwBlock(st, m){
+  const items = [], put = (at, svg, box2) => items.push({ at, svg, box: box2 }), run = st.phase;
+  // glass base, lit from below: the objective and the laser cone under it
+  put([ZX1 - 30, (ZY0 + ZY1)/2, SZ - 6], cyl(HC[0], HC[1], 2, SZ - 1.2, 9, matOf('#3d3935'), toneI, 1) + fill(pd(on(PZ(SZ - 1.15), ellUV(HC[0], HC[1], 7.5, 7.5, 20))), '#bfe3ee') + `<g opacity=".22">${loft(on(PZ(SZ - 1.1), ellUV(HC[0], HC[1], 7.5, 7.5, 16)), on(PZ(ZF0), ellUV(HC[0], HC[1], HR*.9, HR*.9, 16)), () => '#fff3b0')}</g>`, [[HC[0] - 9, HC[1] - 9, 2], [HC[0] + 9, HC[1] + 9, SZ]]);
+  put([ZX0 + 40, 70, SZ + ZG/2], `<g opacity=".92">${box(ZX0, ZY0, SZ, ZX1, ZY1, ZF0, GLASS, toneI, 1.2)}</g>`, [[ZX0, ZY0, SZ], [ZX1, ZY1, ZF0]]);
+  // the film, drawn in two pieces so the open hole sits in a notch at its front edge
+  const nx0 = HC[0] - HR, ny0 = HC[1] - HR, ny1 = HC[1] + HR;
+  put([ZX0 + 20, 70, ZF0 + ZF/2], box(ZX0, ZY0, ZF0, nx0, ZY1, ZT, ALU, toneI, 1.2), [[ZX0, ZY0, ZF0], [nx0, ZY1, ZT]]);
+  put([(nx0 + HC[0])/2, (ZY0 + ny0)/2, ZF0 + ZF/2], box(nx0, ZY0, ZF0, HC[0], ny0, ZT, ALU, toneI, 1.2), [[nx0, ZY0, ZF0], [HC[0], ny0, ZT]]);
+  // other holes on the film top (closed), as dark discs
+  // the open hole: back half-cylinder wall (dark bore), floor disc, and the lit zone at the bottom
+  const ring = (z, r, a0, a1, n = 14) => Array.from({length:n + 1}, (_, i) => { const a = (a0 + (a1 - a0)*i/n)*Math.PI/180; return [HC[0] + r*Math.cos(a), HC[1] + r*Math.sin(a), z]; });
+  // inside of a partial cylinder wall: a segment is drawn only when its inward normal faces the viewer (the far wall)
+  const wallIn = (A, B, col) => { let o = ''; for (let i = 0; i < A.length - 1; i++){ const mid = [(A[i][0] + A[i+1][0])/2, (A[i][1] + A[i+1][1])/2]; const nrm = norm([HC[0] - mid[0], HC[1] - mid[1], 0]); if (vis(nrm)) o += face(pd([A[i], A[i+1], B[i+1], B[i]]), col); } return o; };
+  const A = ring(ZF0, HR, 90, 360, 22), B = ring(ZT, HR, 90, 360, 22);     // three quarters of the wall; the quarter toward the viewer is cut away
+  put([HC[0], HC[1], ZF0], fill(pd([...A, [HC[0], HC[1], ZF0]]), '#cfe6ec') + ink(pd(A, false), 1), [[HC[0] - HR, HC[1] - HR, ZF0 - .2], [HC[0] + .5, HC[1] + .5, ZF0 + .05]]);
+  let hole = wallIn(A, B, '#3a3f44') + `<g opacity="${f(.35 + .2*(run ? 1 : 0))}">${wallIn(ring(ZF0, HR*.98, 90, 360, 22), ring(ZF0 + 30*NM, HR*.98, 90, 360, 22), '#fff3b0')}</g>` + ink(pd(B, false), 1);
+  put([HC[0] - HR*.7, HC[1] - HR*.7, ZF0 + ZF/2], hole, [[HC[0] - HR, HC[1] - HR, ZF0], [HC[0] - HR*.55, HC[1] - HR*.55, ZT]]);
+  // the film on the far side of the hole (toward -y), with the hole's wall cut into its face
+  put([ZX1 - 10, (ZY0 + ny0)/2 - 4, ZF0 + ZF/2], box(HC[0], ZY0, ZF0, ZX1, ny0, ZT, ALU, toneI, 1.2), [[HC[0], ZY0, ZF0], [ZX1, ny0, ZT]]);
+  AV.push({ at: [HC[0] - HR, HC[1], ZT], text: 'ZMW: 70 nm WIDE, 100 nm DEEP, CUT OPEN', on: false }, { at: [HC[0] - HR*.6, HC[1] - HR*.6, ZF0 + 12], text: 'LIT ZONE: BOTTOM 30 nm ONLY', on: !!run }, { at: [HC[0], HC[1] - 8, SZ - 4], text: 'LASER + CAMERA, BELOW THE GLASS', on: !!run }, { at: [ZX0 + 20, ZY0 + 10, ZT], text: 'ALUMINIUM FILM (ONE OF 25 M HOLES)', on: false }, { at: [ZX0 + 8, ZY1 - 6, SZ + ZG/2], text: 'GLASS', on: false });
+  return items;
+}
+
+/* ---------- the molecules in the hole ---------- */
+const RING_R = 15, RCTR = [HC[0] - 5, HC[1], ZF0 + 3.2 + RING_R];        // the SMRTbell circle standing in the hole, its bottom at the polymerase
+const POLY = [HC[0] - 5, HC[1], ZF0 + 3.2], NP = 36;                  // polymerase on the floor; beads round the ring
+const ringPt = (i, rot) => { const a = -Math.PI/2 + 2*Math.PI*((i + rot)/NP); return [RCTR[0] + .9*Math.cos(a*2), RCTR[1] + RING_R*Math.cos(a), RCTR[2] + RING_R*Math.sin(a)]; };
+const ringCol = i => { const k = ((i % NP) + NP) % NP, seg = k % (NP/2), ins = seg >= NA/2 && seg < NA/2 + NI; return ins ? BCOL[INS[seg - NA/2]] : HP; };
+const isIns = i => { const seg = (((i % NP) + NP) % NP) % (NP/2); return seg >= NA/2 && seg < NA/2 + NI; };
+function molecules(st, m){
+  const items = [], put = (at, svg) => items.push({ at, svg }), ph = st.phase, u = st.u;
+  if (st.stage === 0 && !ph) return items;
+  const drop = ph === 'load' ? ease(u) : 1, lift = [0, -20*(1 - drop), 40*(1 - drop)];
+  const rot = st.pos + (ph === 'seq' ? c01((u - .55)/.3) : 0);          // the ring turns one bead as each base is added
+  // the template ring, newest synthesis shown as a second strand on the inside over the last few beads
+  const pts = Array.from({length:NP}, (_, i) => add(ringPt(i, -rot), lift)), cols = pts.map((_, i) => ringCol(i));
+  let s = chain(pts, cols, '#8a8f94', 1.45);
+  const nNew = Math.min(st.pos, NP - 2); const inner = []; for (let j = 0; j < nNew; j++){ const i = -j; const a = -Math.PI/2 + 2*Math.PI*((i + (st.pos - rot) + 0)/NP); inner.push([RCTR[0] - 1.2, RCTR[1] + (RING_R - 3.4)*Math.cos(a), RCTR[2] + (RING_R - 3.4)*Math.sin(a)]); }
+  if (inner.length > 1) s += chain(inner.map(p => add(p, lift)), inner.map(() => NEW), NEW, 1.15);
+  put(add(RCTR, lift), s);
+  put(add(POLY, add(lift, [0, 0, 2.2])), clampAt(add(POLY, add(lift, [0, 0, 2.2])), m, 7.6));
+  // primer stub at the polymerase
+  put(add(POLY, add(lift, [1, 2, 1])), chain([add(POLY, add(lift, [.6, 3.8, .9])), add(POLY, add(lift, [.6, 6.4, 1.5]))], [PRIM, PRIM], PRIM, 1.3));
+  // free nucleotides, dark above the lit zone, in the hole and in the solution above the film
+  const pool = [[-14, -9, 34], [-8, 13, 45], [6, -11, 53], [11, 10, 64], [-3, 0, 81], [-17, 14, 92], [8, -3, 101], [-7, -17, 76]];
+  pool.forEach((o, i) => { if (ph === 'seq' && i === 2) return; put(add([HC[0] - 6 + o[0], HC[1] + o[1], ZF0 + o[2]], [0, 0, 0]), pdntp([HC[0] - 6 + o[0], HC[1] + o[1], ZF0 + o[2]], i % 4)); });
+  if (ph === 'seq'){ const b = BCOL.indexOf(ringCol(st.pos + NP/2)) >= 0 ? 3 - (BCOL.indexOf(ringCol(st.pos + NP/2))) : 0;   // complement of the template base at the active site
+    const site = add(POLY, [0, 2.3, 3.5]), pulse = u >= .25 && u < .55, lit = pulse ? 1 : 0;
+    if (u < .25){ const p = lerp([HC[0] - 2, HC[1] - 11, ZF0 + 53], site, ease(u/.25)); put(p, pdntp(p, st.base)); }
+    else if (u < .55) put(add(site, [0, 0, .5]), pdntp(site, st.base, 1) + halo(site, 5.5, BCOL[st.base], .35));
+    else { const e = (u - .55)/.45, tail = lerp(site, [HC[0] - 2, HC[1] - 14, ZF0 + 42], ease(e)); put(add(tail, [0, 0, .5]), `<g opacity="${f(1 - e)}">${pdntp(tail, st.base, 0, true)}</g>`); }
+    AV.push({ at: site, text: pulse ? 'PULSE: DYE IN THE LIT ZONE' : u < .25 ? 'MATCHING dNTP ARRIVES' : 'DYE LEAVES WITH THE PHOSPHATES', on: true }); }
+  AV.push({ at: add(POLY, lift), text: 'POLYMERASE, FIXED TO THE FLOOR', on: ph === 'load' }, { at: add(pts[NP/2], lift), text: 'SMRTbell: A CIRCLE', on: ph === 'load' }, { at: add(ringPt(NP*.25, -rot), lift), text: isIns(NP*.25 - 0) ? 'INSERT' : 'ADAPTER', on: false }, { at: pool[4].map((v, i) => [HC[0] - 6, HC[1], ZF0][i] + v), text: 'PHOSPHOLINKED dNTP: DYE ON THE PHOSPHATE', on: false });
+  if (st.pos >= NP/2) AV.push({ at: add(inner.length ? inner[Math.min(3, inner.length - 1)] : RCTR, lift), text: 'NEW STRAND: UNLABELLED', on: false });
+  return items;
+}
+
+/* ---------- data: the trace, the subreads, the HiFi read ---------- */
+const CX = 152, NSUB = 10;
+function card(y0, w, title, lines, hot, extra = ''){ const x0 = CX, x1 = CX + 1.2, z0 = 2, z1 = 30; let s = box(x0, y0, z0, x1, y0 + w, z1, PAPER, toneI, 1.1);
+  if (facing([1,0,0])){ const X = x1 + .06; s += shape(on(PX(X - .02), rectUV(y0 + .3, z1 - 4.4, y0 + w - .3, z1 - .3)), hot ? 'var(--accent,#f4b829)' : '#3d3935', .6) + tx(X, y0 + w/2, z1 - 3.1, title, 1.7, hot ? INK : '#f6f2e6', 800);
+    lines.forEach((ln, i) => { if (ln) s += tx(X, y0 + w/2, z1 - 7.6 - 3*i, ln[0], ln[2] || 1.4, ln[1] || INK, 700); }); s += extra; } return s; }
+const subErr = (p, i) => ((p*13 + i*7) % 17) === 3;                   // which bases of pass p are miscalled (schematic ~6%)
+const passes = st => Math.floor(st.pos / (NP/2));
+function dataCards(st){
+  const X = CX + 1.26, F = facing([1,0,0]), p = passes(st), ph = st.phase;
+  let trace = '', subs = '', hifi = '';
+  if (F){ // trace: the last 22 pulses, bar height = pulse, gap before it = interpulse duration (longer after the methylated base)
+    const n = Math.min(st.pos, 22), y0 = 110 + 40, z0 = 7; let y = y0;
+    for (let j = n - 1; j >= 0; j--){ const i = st.pos - 1 - (n - 1 - j), ins = isIns(i + NP/2), base = ins ? 3 - BCOL.indexOf(ringCol(i + NP/2)) : -1, gap = (i % NP) % (NP/2) === NA/2 + METH + 1 ? 2.6 : 1.1;
+      y -= gap; trace += fill(pd(on(PX(X), rectUV(y - .9, z0, y, z0 + (ins ? 9 + (i*5 % 4) : 4)))), ins ? BCOL[base] : HP); y -= .9; }
+    trace += line([[X, 110 + 1.5, z0], [X, y0 + .5, z0]], .7) + tx(X + .02, 130, 4.2, 'TIME  (pulse = base; gap = kinetics)', 1.25, '#857d6e', 700) + (st.pos > 8 ? tx(X + .02, 118, 19, 'LONG GAP: 5mC SLOWS IT', 1.2, '#857d6e', 700) : '');
+    // subreads: one row per pass, insert bases with the occasional error in red
+    for (let r = 0; r < Math.min(p, 6); r++){ const z = 21.5 - r*2.9; let txt = ''; for (let i = 0; i < NI; i++){ const b = 3 - INS[r % 2 ? NI - 1 - i : i]; txt += subErr(r, i) ? 'x' : BASES[b]; }
+      subs += tx(X + .02, 70 + 20, z, `P${r + 1} ${r % 2 ? '<' : '>'} ${txt}`, 1.45, INK, 700); }
+    if (p > 6) subs += tx(X + .02, 90, 21.5 - 6*2.9, `... ${p} PASSES`, 1.3, '#857d6e', 700);
+    // HiFi: consensus of the passes
+    if (st.hifi){ let txt = ''; for (let i = 0; i < NI; i++) txt += BASES[3 - INS[i]]; hifi = tx(X + .02, 50, 20, txt, 2, NEW, 800) + tx(X + .02, 50, 16.4, `Q${st.q}: 1 ERROR IN ${Math.round(10**(st.q/10))}`, 1.5, INK, 700) + tx(X + .02, 50, 13.4, `FROM ${p} PASSES, NO PCR`, 1.3, '#857d6e', 700) + tx(X + .02, 50, 10.4, '5mC AT POSITION 7: CALLED', 1.25, '#857d6e', 700) + tx(X + .02, 50, 7.4, 'hifi_reads.bam', 1.3, NEW, 700); }
+    else hifi = tx(X + .02, 50, 16, p < 3 ? 'NEED 3+ PASSES' : 'PRESS BUILD HiFi READ', 1.5, '#857d6e', 700); }
+  const bx = y => [[CX, y, 2], [CX + 1.3, y + 40, 30]];
+  return [ { box: bx(110), svg: card(110, 40, 'ZMW TRACE (REAL TIME)', [], ph === 'seq' && st.u >= .25 && st.u < .55, trace) }, { box: bx(70), svg: card(70, 40, 'SUBREADS: ONE PER PASS', [], false, subs) }, { box: bx(30), svg: card(30, 40, 'HiFi READ: CONSENSUS', [], !!st.hifi, hifi) } ];
+}
+
+let AV = [];
+function scene(st, m){
+  const btop = boardTop(0, 0, BX, BY, 2, 5), cs = (a, b) => { const o = []; for (const x of [a[0], b[0]]) for (const y of [a[1], b[1]]) for (const z of [a[2], b[2]]) o.push([x, y, z]); return o; };
+  AV = [];
+  let s = board(0, 0, BX, BY, 2, 5) + castShadow(cs([8, 46, 2], [42, 76, 4.6]), 2, btop) + castShadow(cs([ZX0, ZY0, 2], [ZX1, ZY1, ZT]), 2, btop);
+  for (const y of [30, 70, 110]) s += castShadow(cs([CX, y, 2], [CX + 1.2, y + 40, 30]), 2, btop);
+  const zm = zmwBlock(st, m), mol = molecules(st, m).map(o => ({ at: o.at, svg: o.svg, box: [[o.at[0] - 1, o.at[1] - 1, o.at[2] - 1], [o.at[0] + 1, o.at[1] + 1, o.at[2] + 1]] }));
+  s += byDepth([{ box: [[8, 46, 2], [42, 76, 5]], svg: smrtCell(st) }, ...zm, ...mol, ...dataCards(st)]);
+  return s + xrCallouts(AV, [40, 130, 10, 900, 0, 70]);
+}
+
+/* ---------- behaviour ---------- */
+let ui;
+function play(st, name, secs, note2, then){ st.phase = name; st.u = 0; if (note2) ui.flash(note2, 3600);
+  ui.animate(dt => { st.u = Math.min(1, st.u + dt/secs); if (st.u >= 1){ st.phase = null; if (then) then(); return false; } return true; }); }
+function loadZ(st){ if (st.phase) return ui.flash('One moment'); if (st.stage) return ui.flash('Already loaded'); st.stage = 1; play(st, 'load', 2.6, 'The polymerase-SMRTbell complex settles in and is fixed to the glass floor of the ZMW'); }
+function stepBase(st, auto){ if (!auto && st.phase) return ui.flash('One moment'); if (!st.stage) return ui.flash('Load the complex first');
+  const tb = ringCol(st.pos + NP/2); st.base = BCOL.indexOf(tb) >= 0 ? 3 - BCOL.indexOf(tb) : (st.pos % 4);
+  const first = st.pos === 0, slow = (st.pos % NP) % (NP/2) === NA/2 + METH + 1;
+  play(st, 'seq', slow ? 1.5 : .8, first ? 'A matching dNTP is held: its dye flashes in the lit zone (a pulse); the dye leaves with the phosphates' : slow ? 'A methylated base: the polymerase pauses longer, which is how 5mC is detected' : '', () => { st.pos++; if (st.running) stepBase(st, true); }); }
+function toggleRun(st){ if (!st.stage) return ui.flash('Load the complex first'); st.running = !st.running; if (st.running && !st.phase) stepBase(st, true); if (!st.running) ui.flash('Paused', 1200); }
+function buildHiFi(st){ if (st.phase) return ui.flash('One moment'); const p = passes(st); if (p < 3) return ui.flash('Needs at least 3 passes round the circle: keep sequencing');
+  st.running = false; st.q = Math.min(40, Math.round(10 + 5.2*p)); st.hifi = true; ui.flash(`Consensus of ${p} passes: single-pass errors fall out, giving one HiFi read at Q${st.q}`, 3600); }
+ui = mountFigure({
+  fig:'32', turn:'full', title:'SMRT Cell and ZMW (PacBio HiFi)',
+  size:[BX, BY, ZT + 26], palette:'mustard',
+  state:{ stage:0, phase:null, u:0, pos:0, base:0, running:false, hifi:false, q:0 },
+  scene,
+  buttons:[ { label:'Load complex', onClick: st => loadZ(st) }, { label:'Next base', onClick: st => stepBase(st) }, { label:'Run / pause', onClick: st => toggleRun(st) }, { label:'Build HiFi read', onClick: st => buildHiFi(st) },
+    { label:'Reset', onClick: st => { if (st.phase) return ui.flash('One moment'); st.stage = 0; st.pos = 0; st.running = false; st.hifi = false; st.q = 0; } },
+    { label:'Next: Revio', onClick: () => { location.href = 'pacbio-revio.html'; } }, { label:'SMRTbell prep', onClick: () => { location.href = 'pacbio-library-prep.html'; } }, { label:'Cover', onClick: () => { location.href = 'index.html'; } } ],
+  stats: st => [ { label:'Passes', value: passes(st) }, { label:'Bases read', small:true, value: st.pos }, { label:'HiFi Q', small:true, value: st.hifi ? 'Q' + st.q : '-' } ],
+  params:(st, q) => { for (const k of ['stage', 'pos', 'u', 'q']) if (q.has(k)) st[k] = +q.get(k); if (q.has('phase')) st.phase = q.get('phase'); if (q.has('base')) st.base = +q.get('base'); if (q.get('hifi') === '1') st.hifi = true; },
+});
+xrMount(() => ui, () => '', { labelsOnly:true });
+</script></body></html>

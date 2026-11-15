@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SMRTbell library prep</title>
+<style>.controls .ctl:nth-child(1),.controls .ctl:nth-child(2){display:none!important}</style></head><body>
+<script src="core.js"></script>
+<script>
+/* PacBio HiFi library prep (SMRTbell prep kit 3.0), shown only as what happens to the DNA. Source: PacBio procedure
+   checklist "Preparing whole genome and metagenome libraries using SMRTbell prep kit 3.0" (102-166-600 REV09), whose
+   sections are: 1 Short read eliminator (SRE), 2 DNA shearing, 3 (recoveries), 4 Repair and A-tailing, 5 Adapter
+   ligation and cleanup, 6 Nuclease treatment, 7 Diluted AMPure PB bead cleanup and size selection, 8 Annealing,
+   binding and cleanup (ABC). Beads are schematic: a 15-20 kb insert is drawn as 24 beads, a hairpin adapter as a
+   3-bp stem plus a 6-nt loop (real: ~45 nt loop).
+
+   WHAT EACH STEP DOES
+   0. High-molecular-weight genomic DNA (tens to hundreds of kb), with some short fragments and nicks.
+   1. SRE: short fragments (up to ~25 kb) are depleted so they do not take up ZMWs later.
+   2. SHEAR to the target size (15-20 kb) with a Megaruptor or g-TUBE; ends are ragged.
+   3. REPAIR + A-TAIL: nicks, gaps and damaged bases are repaired, ends made blunt, one A added to each 3' end.
+   4. LIGATE SMRTbell ADAPTERS: hairpin adapters with a T overhang go on BOTH ends: the double-stranded insert is now a
+      closed single-stranded circle (a "bell"). Barcoded adapters can index samples here.
+   5. NUCLEASE: exonucleases digest anything with a free end (unligated fragments, one-adapter molecules, leftover
+      adapters). A complete SMRTbell has no free ends and survives.
+   6. AMPure PB size selection depletes fragments < 5 kb; QC on Femto Pulse (size) and Qubit (mass).
+   7. ABC: the sequencing primer anneals inside one hairpin loop (single stranded), the sequencing polymerase binds at
+      the primer's 3' end, cleanup: the complex is ready to load on a SMRT Cell. */
+const BX = 136, BY = 150, SZ = 8, KQ = Math.sqrt(1.5), RB = 1.05, DY = 2.2, DUP = 1.7, ZM = 17, XR = [36, 66, 96], YC = 75, CXQ = 122;
+const BCOL = ['#43c25c', '#4aa3ff', '#f4c430', '#e2483d'];
+const HP = '#8a5cd6', STEM = '#b7a6ea', PRIM = '#55504a', PHOS = '#ff9f43', TPLC = '#8a8f94', TPL2 = '#c3c7ca', GLASS = matOf('#d9eef1'), PAPER = matOf('#fbfaf3');
+const lerp = (a, b, t) => a.map((v, i) => v + (b[i] - v)*t), c01 = v => Math.max(0, Math.min(1, v)), add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const mu = w => `style="stroke-width:${w.toFixed(2)}"`;
+const bead = (p, r, col, w = .5, sc = INK) => { const q = P(...p); return `<circle cx="${f(q[0])}" cy="${f(q[1])}" r="${f(r*KQ)}" fill="${col}" stroke="${sc}" stroke-width="${w}"/>`; };
+const note = (p, str, col = INK, size = 3) => { const q = P(...p); return `<text x="${f(q[0])}" y="${f(q[1])}" font-size="${size}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="800" fill="${col}" stroke="#f2efe7" style="stroke-width:.9;paint-order:stroke">${str}</text>`; };
+const flat = (x, y, str, size, col = '#5f6b70') => `<text transform="${txM(P(x, y, SZ + .05), Dv(0,-1,0), Dv(1,0,0))}" font-size="${size}" fill="${col}" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-weight="800" letter-spacing=".04em">${str}</text>`;
+const baseAt = (r, k) => { const a = Math.abs(k) + r*11; return (a*7 + ((a*a) >> 1) + 3*(a % 5)) % 4; };
+
+/* ---------- a molecule: top and bottom strand beads, optional hairpins, nicks, A-tails ----------
+   m = { x, yc, k0, k1, hpL, hpR, nicks:[k...], atail, ragged, prim, poly, grey, from, sep } */
+const yk = (m, k) => m.yc + (k - 9.5)*DY;
+const tp = (m, k) => [m.x - DUP, yk(m, k), ZM], bp = (m, k) => [m.x + DUP, yk(m, k), ZM];
+function hairpin(m, end){ // stem (3 paired beads) then a loop of 6 beads from the top strand round to the bottom strand
+  const d = end > 0 ? 1 : -1, ks = [1, 2, 3].map(i => (end > 0 ? m.k1 : m.k0) + d*i), kl = (end > 0 ? m.k1 : m.k0) + d*3.5;
+  const top = ks.map(k => tp(m, k)), bot = ks.map(k => bp(m, k)), loop = [];
+  for (let i = 0; i <= 6; i++){ const a = Math.PI*i/6; loop.push([m.x - DUP*Math.cos(a), yk(m, kl) + d*DUP*1.9*Math.sin(a), ZM + .6*Math.sin(a)]); }
+  return { top, bot, loop };
+}
+function drawMol(m, fIn = 1){
+  const off = m.from ? m.from.map(v => v*(1 - ease(fIn))) : [0, 0, 0], sh = p => add(p, off);
+  const n = m.k1 - m.k0 + 1, topPts = [], botPts = [], topCol = [], botCol = [];
+  for (let k = m.k0; k <= m.k1; k++){ topPts.push(sh(tp(m, k))); botPts.push(sh(bp(m, k))); topCol.push(m.grey ? '#d6dadd' : BCOL[baseAt(0, k)]); botCol.push(m.grey ? '#eceeef' : BCOL[3 - baseAt(0, k)]); }
+  let s = '', items = [];
+  const strand = (pts, cols, rib) => { const d = pd(pts, false); return `<path d="${d}" fill="none" stroke="${INK}" ${mu(1.75)} stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${rib}" ${mu(1.25)} stroke-linecap="round" stroke-linejoin="round"/>` + pts.map((p, i) => [depthOf(p), bead(p, RB, cols[i], 1.1, rib)]).sort((a, b) => a[0] - b[0]).map(x => x[1]).join(''); };
+  // nicks: a missing bead on one strand; ragged: the two strands end at different positions
+  const nickSet = new Set(m.nicks || []);
+  const topSeg = [], botSeg = []; let ct = [], cb = [], cct = [], ccb = [];
+  for (let i = 0; i < n; i++){ const k = m.k0 + i; if (nickSet.has(k)){ if (ct.length){ topSeg.push([ct, cct]); ct = []; cct = []; } } else { ct.push(topPts[i]); cct.push(topCol[i]); }
+    if (nickSet.has(-k - 100)){ if (cb.length){ botSeg.push([cb, ccb]); cb = []; ccb = []; } } else { cb.push(botPts[i]); ccb.push(botCol[i]); } }
+  if (ct.length) topSeg.push([ct, cct]); if (cb.length) botSeg.push([cb, ccb]);
+  if (m.ragged){ topSeg[0][0] = topSeg[0][0].slice(2); topSeg[0][1] = topSeg[0][1].slice(2); const L = botSeg[botSeg.length - 1]; L[0] = L[0].slice(0, -2); L[1] = L[1].slice(0, -2); }
+  let rg = ''; for (let i = 0; i < n; i++) if (!nickSet.has(m.k0 + i) && !nickSet.has(-(m.k0 + i) - 100) && !(m.ragged && (i < 2 || i >= n - 2))) rg += pd([topPts[i], botPts[i]], false);
+  s += `<path d="${rg}" fill="none" stroke="${INK}" ${mu(.3)} opacity=".6"/>`;
+  for (const [pts, cols] of topSeg) s += strand(pts, cols, TPLC); for (const [pts, cols] of botSeg) s += strand(pts, cols, TPL2);
+  if (m.atail){ s += bead(sh(bp(m, m.k0 - 1)), RB, BCOL[0], 1.1, TPL2) + bead(sh(tp(m, m.k1 + 1)), RB, BCOL[0], 1.1, TPLC) + bead(sh(add(tp(m, m.k0), [0, -.6, 0])), .5, PHOS, .4) + bead(sh(add(bp(m, m.k1), [0, .6, 0])), .5, PHOS, .4); }
+  for (const [end, on] of [[-1, m.hpL], [1, m.hpR]]){ if (!on) continue; const h = hairpin(m, end), e = typeof on === 'number' ? on : 1, lift = [0, end*14*(1 - e), 12*(1 - e)];
+    const T = h.top.map(p => add(sh(p), lift)), B = h.bot.map(p => add(sh(p), lift)), L = h.loop.map(p => add(sh(p), lift));
+    let rr = ''; for (let i = 0; i < 3; i++) rr += pd([T[i], B[i]], false);
+    s += `<path d="${rr}" fill="none" stroke="${INK}" ${mu(.3)} opacity=".6"/>` + strand([...(end > 0 ? T : T.slice().reverse()), ...L.slice(1, -1).map(p => p), ...(end > 0 ? B.slice().reverse() : B)], [...Array(3).fill(STEM), ...Array(5).fill(HP), ...Array(3).fill(STEM)], HP);
+    if (m.prim && end < 0){ const pr = [1, 2, 3].map(i => { const q = L[i]; return [m.x - (q[0] - m.x)*.05, q[1] + 1.9, q[2] + .3]; }).map(p => add(p, [0, 0, 0]));
+      s += strand(pr.map((p, i) => [m.x + (i - 1)*1.2, L[2][1] + 2.4, ZM + .4]), [PRIM, PRIM, PRIM], PRIM); }
+  }
+  return s;
+}
+function clampAt(p, m, R = 4.2){ const c = p, pts = []; for (let i = 0; i <= 24; i++){ const t = (48 + 264*i/24)*Math.PI/180; pts.push(P(...[0, 1, 2].map(j => c[j] + CAM_R[j]*R*.58*Math.sin(t) + CAM_U[j]*R*.58*Math.cos(t)))); }
+  const d = 'M' + pts.map(q => f(q[0]) + ' ' + f(q[1])).join('L'), st = (col, w) => `<path d="${d}" fill="none" stroke="${col}" style="stroke-width:${(w*R*KQ).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  return `<g opacity=".8">${st(INK, .56)}${st(m.m, .5)}${st(m.l, .2)}</g>`; }
+
+const STEPS = [null,
+  { name:'Short read eliminator', note:'SRE depletes fragments up to about 25 kb, so short pieces do not take up ZMWs later', r:'HMW DNA, shorts removed' },
+  { name:'Shear', note:'Megaruptor or g-TUBE shears to 15 to 20 kb; the ends are ragged', r:'15-20 kb, ragged ends' },
+  { name:'Repair + A-tail', note:'Nicks, gaps and damaged bases are repaired, ends made blunt, one A on each 3 end', r:'repaired, blunt, 3 A' },
+  { name:'Ligate SMRTbell adapters', note:'Hairpin adapters with a T overhang close BOTH ends: the insert is now a single-stranded circle', r:'SMRTbell: closed circle' },
+  { name:'Nuclease', note:'Exonucleases eat anything with a free end; a complete SMRTbell has none and survives', r:'linear leftovers gone' },
+  { name:'Size select + QC', note:'AMPure PB beads deplete fragments under 5 kb; Femto Pulse checks size, Qubit checks mass', r:'17 kb peak, 25 uL' },
+  { name:'Anneal + bind', note:'The sequencing primer anneals inside a hairpin loop; the polymerase binds at its 3 end: ready to load', r:'polymerase-bound complex' } ];
+
+function qcCard(st){
+  const x0 = CXQ, x1 = CXQ + 1.2, y0 = 52, w = 46, z0 = 2, z1 = 27, show = st.step > 6 || (st.step === 6 && (!st.anim || st.u > .4));
+  let s = box(x0, y0, z0, x1, y0 + w, z1, PAPER, toneI, 1.1);
+  if (facing([1,0,0])){ const X = x1 + .06, pl = uv => on(PX(X), uv);
+    s += shape(pl(rectUV(y0 + .3, z1 - 4.6, y0 + w - .3, z1 - .3)), show ? 'var(--accent,#f4b829)' : '#3d3935', .6) + tx(X, y0 + w/2, z1 - 3.3, 'LIBRARY QC', 2, show ? INK : '#f6f2e6', 800);
+    s += line([[X, y0 + w - 4, 10.4], [X, y0 + 4, 10.4]], .9) + line([[X, y0 + w - 4, 10.4], [X, y0 + w - 4, 21]], .9);
+    if (show){ const pts = []; for (let i = 0; i <= 40; i++){ const t = i/40, y = y0 + w - 4 - t*(w - 8), g = Math.exp(-(((t - .62)/.1)**2)); pts.push([X, y, 10.8 + 9.5*g]); }
+      s += `<path d="${pd(pts, false)}" fill="none" stroke="${HP}" stroke-width="2.2" stroke-linejoin="round"/>`;
+      s += tx(X, y0 + w - 4 - .62*(w - 8), 8, 'PEAK 17 kb', 1.6, INK, 800) + tx(X, y0 + w - 10, 8, 'NOTHING < 5 kb', 1.3, '#857d6e', 700) + tx(X, y0 + w/2, 5.4, 'FEMTO PULSE SIZE . QUBIT MASS', 1.4, INK, 700) + tx(X, y0 + w/2, 3.2, 'SIZE (kb, log)', 1.2, '#857d6e', 700); }
+    else s += tx(X, y0 + w/2, 14, 'NOT MEASURED YET', 1.6, '#857d6e', 700); }
+  return s;
+}
+
+let LP_LABELS = [];
+function patch(st, m){
+  const u = st.anim ? st.u : 1, fI = st.anim ? c01((u - .25)/.5) : 1, L = LP_LABELS, n = st.step, lab = (at, text, on = false) => L.push({ at, text, on }), on = !!st.anim;
+  let s = box(8, 14, 2, 112, 136, SZ, GLASS, toneI, 1.4) + flat(XR[0] + 6.5, YC, 'THE FRAGMENT WE FOLLOW', 3.2) + flat(XR[1] + 6.5, YC, 'A SHORT FRAGMENT', 3.2) + flat(XR[2] + 6.5, YC, 'LEFTOVERS', 3.2);
+  const items = [], put = (at, svg) => items.push({ at, svg }), fade = (svg, o) => `<g opacity="${f(o)}">${svg}</g>`;
+  const M = { x: XR[0], yc: YC, k0: 0, k1: 23 };
+  // ---- the fragment we follow
+  if (n === 0) put([M.x, YC, ZM], drawMol({ ...M, k0: -16, k1: 36, nicks: [4, -(19) - 100, 29] }));
+  if (n === 1) put([M.x, YC, ZM], drawMol({ ...M, k0: -16, k1: 36, nicks: [4, -(19) - 100, 29] }));
+  if (n === 2){ put([M.x, YC, ZM], drawMol({ ...M, nicks: [4, -(19) - 100], ragged: true }));
+    if (st.anim){ const e = ease(c01((u - .3)/.5)); put([M.x, YC + 40, ZM], fade(drawMol({ x: M.x, yc: YC, k0: 26, k1: 36, from: [0, 0, 0] }), 1 - e)); put([M.x, YC - 40, ZM], fade(drawMol({ x: M.x, yc: YC, k0: -16, k1: -3 }), 1 - e)); if (u > .1 && u < .7){ for (const k of [-1.5, 24.5]) put([M.x, yk(M, k), ZM + 3], note([M.x, yk(M, k), ZM + 3.5], 'CUT', '#e2483d', 3)); } } }
+  if (n === 3){ const rep = st.anim ? ease(c01((u - .3)/.4)) : 1; put([M.x, YC, ZM], drawMol({ ...M, nicks: rep > .5 ? [] : [4, -(19) - 100], ragged: rep < .5, atail: rep > .8 })); if (on && rep < .5){ lab(tp(M, 4), 'NICK: REPAIRED', true); lab(bp(M, 19), 'DAMAGED BASE: REPAIRED', true); } }
+  if (n >= 4){ const e = n === 4 && st.anim ? ease(c01((u - .2)/.5)) : 1, pr = n >= 7 && (!st.anim || u > .3), po = n >= 7 && (!st.anim || u > .6);
+    put([M.x, YC, ZM], drawMol({ ...M, hpL: e, hpR: e, prim: pr }));
+    if (po){ const h = hairpin(M, -1), c = [M.x + 1.5, h.loop[2][1] + 2.4, ZM + .6]; put(add(c, [0, 0, .5]), clampAt(c, m)); lab(c, 'SEQUENCING POLYMERASE: BOUND', on); }
+    if (pr) lab([M.x, hairpin(M, -1).loop[2][1] + 2.4, ZM + .4], 'SEQUENCING PRIMER IN THE LOOP', on && !po); }
+  // ---- a short fragment: lost at SRE
+  if (n === 0) put([XR[1], YC, ZM], drawMol({ x: XR[1], yc: YC, k0: 5, k1: 13 }));
+  if (n === 1 && st.anim) put([XR[1], YC, ZM], fade(drawMol({ x: XR[1], yc: YC, k0: 5, k1: 13 }), 1 - ease(c01((u - .3)/.5))));
+  if (n === 1 && st.anim) lab([XR[1], YC, ZM + 2], 'SHORT: DEPLETED BY SRE', true);
+  // ---- leftovers after ligation: a one-adapter molecule and free adapters, eaten by the nuclease; a short SMRTbell, lost at size selection
+  if (n === 4 || n === 5){ const g = n === 5 && st.anim ? 1 - ease(c01((u - .25)/.5)) : n === 5 ? 0 : 1; if (g > 0){
+    put([XR[2], YC, ZM], fade(drawMol({ x: XR[2], yc: YC, k0: 8, k1: 16, hpR: 1, atail: true }), g)); put([XR[1], YC + 20, ZM], fade(drawMol({ x: XR[1], yc: YC + 18, k0: 11, k1: 11, hpR: 1, hpL: 1 }), g));
+    if (n === 4 && fI > .8){ lab([XR[2] - DUP, yk({ yc: YC }, 8), ZM], 'ONE ADAPTER ONLY: FREE END', false); lab([XR[1], YC + 18 + 1.5*DY, ZM], 'ADAPTER DIMER', false); }
+    if (n === 5 && st.anim){ lab([XR[2] - DUP, yk({ yc: YC }, 8), ZM], 'FREE END: DIGESTED', true); lab([M.x + DUP, yk(M, 12), ZM], 'NO FREE END: SURVIVES', true); } } }
+  if (n === 5 || n === 6){ const g = n === 6 && st.anim ? 1 - ease(c01((u - .25)/.5)) : n === 6 ? 0 : 1; if (g > 0){ put([XR[1], YC, ZM], fade(drawMol({ x: XR[1], yc: YC, k0: 8, k1: 12, hpL: 1, hpR: 1 }), g)); if (n === 6 && st.anim) lab([XR[1] - DUP, yk({ yc: YC }, 10), ZM], 'UNDER 5 kb: DEPLETED', true); else if (n === 5 && !st.anim) lab([XR[1] - DUP, yk({ yc: YC }, 10), ZM], 'A SHORT SMRTbell', false); } }
+  // names
+  if (n === 0){ lab(tp(M, -10), 'HMW GENOMIC DNA', false); lab(tp(M, 4), 'NICK', false); lab([XR[1] - DUP, yk({ yc: YC }, 9), ZM], 'SHORT FRAGMENT', false); }
+  if (n === 2){ lab(tp(M, 10), 'INSERT: 15 TO 20 kb', on); lab(bp(M, 23), 'RAGGED END', on); }
+  if (n === 3 && !st.anim){ lab(bp(M, -1), 'A OVERHANG', false); lab(tp(M, 10), 'INSERT', false); }
+  if (n >= 4){ const h = hairpin(M, 1); lab(h.loop[3], 'HAIRPIN ADAPTER', on && n === 4); lab(h.top[1], 'STEM: T PAIRS WITH A', on && n === 4); if (!st.anim || n > 4) lab(tp(M, 10), n >= 4 ? 'SMRTbell: ONE CLOSED CIRCLE' : 'INSERT', n === 4); }
+  if (n === 7) lab(hairpin(M, 1).loop[3], 'OTHER LOOP: NO PRIMER', false);
+  return s + byDepth(items);
+}
+
+function scene(st, m){
+  const btop = boardTop(0, 0, BX, BY, 2, 5), cs = (a, b) => { const o = []; for (const x of [a[0], b[0]]) for (const y of [a[1], b[1]]) for (const z of [a[2], b[2]]) o.push([x, y, z]); return o; };
+  LP_LABELS = [];
+  let s = board(0, 0, BX, BY, 2, 5) + castShadow(cs([8, 14, 2], [112, 136, SZ]), 2, btop) + castShadow(cs([CXQ, 52, 2], [CXQ + 1.2, 98, 27]), 2, btop);
+  s += byDepth([{ box: [[8, 14, 2], [118, 136, 50]], svg: patch(st, m) }, { box: [[CXQ, 52, 2], [CXQ + 1.3, 98, 27]], svg: qcCard(st) }]);
+  if (facing([1,0,0])) LP_LABELS.push({ at: [CXQ + 1.3, 54, 25], text: 'QC RESULT', on: st.step === 6 && st.anim });
+  return s + xrCallouts(LP_LABELS, [0, 92, 40, 600, 0, 36]);
+}
+let ui;
+function doStep(st, n){ if (st.anim) return ui.flash('One moment'); if (st.step >= n) return ui.flash(STEPS[n].name + ' is already done'); if (st.step < n - 1) return ui.flash('First: ' + STEPS[st.step + 1].name);
+  st.step = n; st.anim = true; st.u = 0; ui.flash(STEPS[n].note, 3800); const secs = 3.4;
+  ui.animate(dt => { st.u = Math.min(1, st.u + dt/secs); if (st.u >= 1){ st.anim = false; return false; } return true; }); }
+ui = mountFigure({
+  fig:'31', turn:'full', title:'SMRTbell library prep (PacBio HiFi)',
+  size:[BX, BY, 44], palette:'mustard',
+  state:{ step:0, anim:false, u:0 },
+  scene,
+  buttons:[ ...[1, 2, 3, 4, 5, 6, 7].map(n => ({ label: STEPS[n].name, onClick: st => doStep(st, n) })),
+    { label:'Reset', onClick: st => { if (st.anim) return ui.flash('One moment'); st.step = 0; st.u = 0; } },
+    { label:'Next: SMRT Cell', onClick: () => { location.href = 'pacbio-smrt-cell.html'; } },
+    { label:'Short-read prep', onClick: () => { location.href = 'library-prep.html'; } },
+    { label:'Cover', onClick: () => { location.href = 'index.html'; } } ],
+  stats: st => [ { label:'Step', value: `${st.step}/7` }, { label:'In the tube', value: st.step === 0 ? 'HMW DNA + shorts' : STEPS[st.step].r, small:true } ],
+  params:(st, q) => { if (q.has('step')) st.step = +q.get('step'); if (q.has('u')){ st.u = +q.get('u'); st.anim = true; } },
+});
+xrMount(() => ui, () => '', { labelsOnly:true });
+</script></body></html>
